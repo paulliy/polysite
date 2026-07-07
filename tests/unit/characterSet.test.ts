@@ -6,8 +6,10 @@ import {
   ICONS,
   isFace,
   isIcon,
+  LOADING_FACES,
   normalizeChar,
   normalizeText,
+  randomLoadingFace,
   randomSpinFace,
   spinPoolFor,
 } from '@/engine/characterSet'
@@ -73,6 +75,21 @@ describe('characterSet', () => {
     expect(spinPoolFor(BLANK, BLANK)).toHaveLength(0)
     expect(randomSpinFace(BLANK, BLANK)).toBeNull()
     expect(spinPoolFor(BLANK, ICONS.email)).toHaveLength(0)
+  })
+
+  it('draws loading noise from visible glyphs only, never blank or icons', () => {
+    expect(LOADING_FACES).not.toContain(BLANK)
+    for (const icon of Object.values(ICONS)) expect(LOADING_FACES).not.toContain(icon)
+    for (let i = 0; i < 100; i++) {
+      const face = randomLoadingFace()
+      expect(LOADING_FACES).toContain(face)
+    }
+  })
+
+  it('never repeats the excluded face on a loading hop', () => {
+    for (let i = 0; i < 100; i++) {
+      expect(randomLoadingFace('A')).not.toBe('A')
+    }
   })
 
   it('folds typographic characters to ASCII at the text level', () => {

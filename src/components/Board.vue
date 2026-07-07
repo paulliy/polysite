@@ -61,5 +61,7 @@ const board = useBoardStore()
 
 .board-row {
   display: flex;
+  /* Scope layout/paint to the row so a flipping cell can't reflow siblings. */
+  contain: layout paint style;
 }
 </style>

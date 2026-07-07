@@ -4,6 +4,9 @@
  * settings UI for any of them.
  */
 
+import type { RippleCurve } from '@/engine/ripple'
+export type { RippleCurve }
+
 /** Character grid dimensions (desktop). */
 export const GRID_COLS = 44
 export const GRID_ROWS = 22
@@ -36,19 +39,90 @@ export const FLIP_HOP_MS = 120
 export const FLIP_INTERMEDIATE_TOP_MIN = 0
 export const FLIP_INTERMEDIATE_TOP_MAX = 1
 export const FLIP_INTERMEDIATE_BOTTOM_MIN = 3
-export const FLIP_INTERMEDIATE_BOTTOM_MAX = 6
+export const FLIP_INTERMEDIATE_BOTTOM_MAX = 5
 
-/** Delay added per row so multi-cell changes ripple top-to-bottom. */
-export const RIPPLE_ROW_STAGGER_MS = 18
+/**
+ * Ripple timing for multi-cell changes (CLAUDE.md #3): a full top-to-bottom
+ * sweep — from the first changed row to the last — takes RIPPLE_DURATION_MS,
+ * however many rows are actually involved. RIPPLE_CURVE shapes how that
+ * fixed time budget is distributed across row depth: 'linear' spaces delays
+ * evenly, 'ease-in' starts slow and accelerates toward the bottom,
+ * 'ease-out' starts fast and settles, 'ease-in-out' does both. See
+ * engine/ripple.ts for the curve math.
+ */
+export const RIPPLE_DURATION_MS = 700
+export const RIPPLE_CURVE: RippleCurve = 'ease-out'
 
 /**
  * Minimum time the random-noise loading state runs, even if content is ready
  * sooner: Promise.all([minDurationTimer, contentReadyPromise]).
  */
-export const LOADING_MIN_DURATION_MS = 1600
+export const LOADING_MIN_DURATION_MS = 4500
+
+/**
+ * Pre-content loading noise (CLAUDE.md #9): every cell flips on its own random
+ * cadence — one hop, a random gap, repeat — so the board reads as organic,
+ * unsynchronized texture rather than a wave. When the intro completes each
+ * cell settles into its real face on the top-to-bottom ripple. Code constants,
+ * no visitor-facing control.
+ */
+export const LOADING_HOP_MS = 110
+export const LOADING_GAP_MIN_MS = 80
+export const LOADING_GAP_MAX_MS = 540
+/** Max random delay before a cell's first hop, so cells don't start in unison. */
+export const LOADING_START_STAGGER_MS = 900
 
 /** Image pixelation granularity: character cells per image "pixel". */
 export const IMAGE_BLOCK_SIZE = 1
 
 /** Mechanical clack per flip. */
 export const SOUND_ENABLED = true
+
+/** CSS easing curve applied to every flap hop's 180° rotation. */
+export const FLIP_EASING = 'cubic-bezier(0.35, 0, 0.65, 1)'
+
+/**
+ * Perf: defer mounting a cell's flip animation (its `.flip` DOM subtree +
+ * WAAPI setup) until the cell's own ripple turn, instead of mounting every
+ * changed cell's animation at once on commit. This is what stops a full-page
+ * ripple (~700 cells) from bursting all their animation setup into a single
+ * frame. Flip to false to A/B against the naive "mount everything
+ * immediately, let the animation's own delay stagger it" behavior.
+ */
+export const DEFER_FLIP_MOUNT = true
+
+/**
+ * Sound design for the synthesized clack (src/audio/clack.ts). Nothing here
+ * is a visitor-facing setting — these are code constants to tune the feel.
+ */
+
+/** Clack sample length: max(CLACK_MIN_SECONDS, FLIP_HOP_MS * CLACK_LENGTH_RATIO). */
+export const CLACK_LENGTH_RATIO = 0.7
+export const CLACK_MIN_SECONDS = 0.03
+
+/** Distinct noise grains in the pool — more variety, marginally more setup cost. */
+export const CLACK_POOL_SIZE = 6
+
+/** Minimum gap between played clacks, jittered so spacing isn't perfectly even. */
+export const CLACK_THROTTLE_MS = 20
+export const CLACK_THROTTLE_JITTER_MS = 12
+
+/** Extra random offset applied to each clack's scheduled start time. */
+export const CLACK_START_JITTER_MS = 10
+
+/** Per-play pitch randomization, as a fraction of normal playback rate. */
+export const CLACK_PITCH_JITTER = 0.18
+
+/** Bandpass filter sweep applied per clack, in Hz, plus its resonance. */
+export const CLACK_FILTER_FREQ_MIN = 1900
+export const CLACK_FILTER_FREQ_MAX = 2600
+export const CLACK_FILTER_Q = 1.1
+
+/** Base per-clack gain (before density scaling) and its per-play jitter range. */
+export const CLACK_BASE_GAIN = 0.13
+export const CLACK_GAIN_JITTER = 0.3
+/** Hard ceiling on any single clack's gain, regardless of density. */
+export const CLACK_MAX_GAIN = 0.32
+
+/** Hard cap on simultaneous clack voices per transition (perf + avoids a wall of noise). */
+export const CLACK_MAX_VOICES = 48

@@ -18,26 +18,31 @@
  * listener resumes the context for everything after that.
  */
 
-import { FLIP_HOP_MS, SOUND_ENABLED } from '@/config'
+import {
+  FLIP_HOP_MS,
+  SOUND_ENABLED,
+  CLACK_LENGTH_RATIO,
+  CLACK_MIN_SECONDS,
+  CLACK_POOL_SIZE,
+  CLACK_THROTTLE_MS,
+  CLACK_THROTTLE_JITTER_MS,
+  CLACK_START_JITTER_MS,
+  CLACK_PITCH_JITTER,
+  CLACK_FILTER_FREQ_MIN,
+  CLACK_FILTER_FREQ_MAX,
+  CLACK_FILTER_Q,
+  CLACK_BASE_GAIN,
+  CLACK_GAIN_JITTER,
+  CLACK_MAX_GAIN,
+  CLACK_MAX_VOICES,
+} from '@/config'
 
 let ctx: AudioContext | null = null
 let noisePool: AudioBuffer[] = []
 let unlockRegistered = false
 
 /** Clack length tracks the hop so the tick resolves as the flap lands. */
-const CLACK_SECONDS = Math.max(0.03, (FLIP_HOP_MS / 1000) * 0.7)
-/** Distinct noise grains to pick from, so the sample isn't identical each play. */
-const POOL_SIZE = 6
-
-/** Throttle: min gap between played clacks, jittered so spacing is irregular. */
-const THROTTLE_MS = 20
-const THROTTLE_JITTER_MS = 12
-/** Extra micro-jitter on each scheduled time so even throttled hits aren't even. */
-const START_JITTER_MS = 10
-/** Per-play pitch spread (± fraction of playbackRate). */
-const PITCH_JITTER = 0.18
-/** Hard cap on voices per transition. */
-const MAX_VOICES = 48
+const CLACK_SECONDS = Math.max(CLACK_MIN_SECONDS, (FLIP_HOP_MS / 1000) * CLACK_LENGTH_RATIO)
 
 function buildNoiseGrain(context: AudioContext): AudioBuffer {
   const length = Math.ceil(context.sampleRate * CLACK_SECONDS)
@@ -58,7 +63,7 @@ function ensureContext(): AudioContext | null {
   }
   ctx ??= new AudioContext()
   if (noisePool.length === 0) {
-    noisePool = Array.from({ length: POOL_SIZE }, () => buildNoiseGrain(ctx!))
+    noisePool = Array.from({ length: CLACK_POOL_SIZE }, () => buildNoiseGrain(ctx!))
   }
 
   if (ctx.state === 'suspended' && !unlockRegistered) {
@@ -86,17 +91,18 @@ function playClack(context: AudioContext, now: number, whenMs: number, weight: n
   const source = context.createBufferSource()
   source.buffer = grain
   // Pitch jitter — also nudges length slightly, which is fine.
-  source.playbackRate.value = 1 + (rand() - 0.5) * PITCH_JITTER
+  source.playbackRate.value = 1 + (rand() - 0.5) * CLACK_PITCH_JITTER
 
   const filter = context.createBiquadFilter()
   filter.type = 'bandpass'
-  filter.frequency.value = 1900 + rand() * 700
-  filter.Q.value = 1.1
+  filter.frequency.value =
+    CLACK_FILTER_FREQ_MIN + rand() * (CLACK_FILTER_FREQ_MAX - CLACK_FILTER_FREQ_MIN)
+  filter.Q.value = CLACK_FILTER_Q
 
   const gain = context.createGain()
   // Per-play level jitter, plus a gentle rise with how many impacts folded in.
-  const base = 0.13 * (0.85 + rand() * 0.3)
-  gain.gain.value = Math.min(0.32, base * Math.sqrt(weight))
+  const base = CLACK_BASE_GAIN * (1 - CLACK_GAIN_JITTER / 2 + rand() * CLACK_GAIN_JITTER)
+  gain.gain.value = Math.min(CLACK_MAX_GAIN, base * Math.sqrt(weight))
 
   source.connect(filter)
   filter.connect(gain)
@@ -119,7 +125,7 @@ export function scheduleClacks(impactTimesMs: number[]) {
   const events: Array<{ time: number; weight: number }> = []
   let lastPlayed = -Infinity
   for (const time of sorted) {
-    const gap = THROTTLE_MS + (rand() - 0.5) * THROTTLE_JITTER_MS
+    const gap = CLACK_THROTTLE_MS + (rand() - 0.5) * CLACK_THROTTLE_JITTER_MS
     if (time - lastPlayed < gap) {
       const last = events[events.length - 1]
       if (last) last.weight++
@@ -130,7 +136,7 @@ export function scheduleClacks(impactTimesMs: number[]) {
   }
 
   const now = context.currentTime
-  for (const { time, weight } of events.slice(0, MAX_VOICES)) {
-    playClack(context, now, time + (rand() - 0.5) * START_JITTER_MS, weight)
+  for (const { time, weight } of events.slice(0, CLACK_MAX_VOICES)) {
+    playClack(context, now, time + (rand() - 0.5) * CLACK_START_JITTER_MS, weight)
   }
 }

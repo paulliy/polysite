@@ -7,13 +7,16 @@ import {
   GRID_COLS,
   GRID_ROWS,
   NAV_ROWS,
-  RIPPLE_ROW_STAGGER_MS,
+  RIPPLE_DURATION_MS,
+  RIPPLE_CURVE,
   FLIP_INTERMEDIATE_TOP_MAX,
   FLIP_INTERMEDIATE_BOTTOM_MIN,
 } from '@/config'
 import { BLANK } from '@/engine/characterSet'
+import { rippleDelayMs } from '@/engine/ripple'
 
 const CONTENT_ROWS = GRID_ROWS - NAV_ROWS - FOOTER_ROWS
+const rowFraction = (globalRow: number) => globalRow / (GRID_ROWS - 1)
 
 describe('board store', () => {
   beforeEach(() => {
@@ -143,7 +146,7 @@ describe('board store', () => {
     expect(board.flips.size).toBe(2)
     const first = board.flips.get(`${NAV_ROWS}:0`)!
     expect(first.from.face).toBe(BLANK)
-    expect(first.delayMs).toBe(NAV_ROWS * RIPPLE_ROW_STAGGER_MS)
+    expect(first.delayMs).toBe(rippleDelayMs(rowFraction(NAV_ROWS), RIPPLE_DURATION_MS, RIPPLE_CURVE))
     expect(board.flips.has(`${NAV_ROWS}:2`)).toBe(false) // blank→blank never flips
   })
 
@@ -211,7 +214,7 @@ describe('board store', () => {
     board.setPage(frames)
     for (const [key, flip] of board.flips) {
       const row = Number(key.split(':')[0])
-      expect(flip.delayMs).toBe(row * RIPPLE_ROW_STAGGER_MS)
+      expect(flip.delayMs).toBe(rippleDelayMs(rowFraction(row), RIPPLE_DURATION_MS, RIPPLE_CURVE))
     }
   })
 

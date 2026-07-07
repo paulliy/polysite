@@ -78,6 +78,27 @@ export function randomSpinFace(from: string, to: string): string | null {
   return null
 }
 
+/** Every visible glyph a cell can flap through — no blank, no icons. */
+export const LOADING_FACES: readonly string[] = [
+  ...UPPER,
+  ...LOWER,
+  ...DIGITS,
+  ...PUNCTUATION,
+]
+
+/**
+ * A random face for the pre-content loading noise (CLAUDE.md #9): any
+ * category, never blank or an icon, and never equal to `exclude` (the face
+ * currently shown) so a cell visibly changes on each hop.
+ */
+export function randomLoadingFace(exclude?: string): string {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const face = LOADING_FACES[Math.floor(Math.random() * LOADING_FACES.length)] ?? FALLBACK_FACE
+    if (face !== exclude) return face
+  }
+  return FALLBACK_FACE
+}
+
 /** Typographic characters authors commonly paste that we fold to ASCII. */
 const TEXT_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
   [/[‘’]/g, "'"],

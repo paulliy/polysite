@@ -12,7 +12,26 @@ import {
   FLIP_INTERMEDIATE_BOTTOM_MAX,
   LOADING_MIN_DURATION_MS,
   IMAGE_BLOCK_SIZE,
+  FLIP_EASING,
+  DEFER_FLIP_MOUNT,
+  RIPPLE_DURATION_MS,
+  RIPPLE_CURVE,
+  CLACK_LENGTH_RATIO,
+  CLACK_MIN_SECONDS,
+  CLACK_POOL_SIZE,
+  CLACK_THROTTLE_MS,
+  CLACK_THROTTLE_JITTER_MS,
+  CLACK_START_JITTER_MS,
+  CLACK_PITCH_JITTER,
+  CLACK_FILTER_FREQ_MIN,
+  CLACK_FILTER_FREQ_MAX,
+  CLACK_FILTER_Q,
+  CLACK_BASE_GAIN,
+  CLACK_GAIN_JITTER,
+  CLACK_MAX_GAIN,
+  CLACK_MAX_VOICES,
 } from '@/config'
+import { RIPPLE_CURVES } from '@/engine/ripple'
 
 describe('config constants', () => {
   it('defines a usable grid', () => {
@@ -51,5 +70,32 @@ describe('config constants', () => {
     // Deeper rows should flap through at least as many intermediates as the top.
     expect(FLIP_INTERMEDIATE_BOTTOM_MIN).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_TOP_MIN)
     expect(FLIP_INTERMEDIATE_BOTTOM_MAX).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_TOP_MAX)
+  })
+
+  it('defines a valid CSS easing function and a boolean perf toggle', () => {
+    expect(FLIP_EASING).toMatch(/^(cubic-bezier\(.+\)|ease|ease-in|ease-out|ease-in-out|linear)$/)
+    expect(typeof DEFER_FLIP_MOUNT).toBe('boolean')
+  })
+
+  it('gives the ripple a positive total duration and a recognized curve', () => {
+    expect(RIPPLE_DURATION_MS).toBeGreaterThan(0)
+    expect(RIPPLE_CURVES).toContain(RIPPLE_CURVE)
+  })
+
+  it('keeps clack sound-design constants sane', () => {
+    expect(CLACK_LENGTH_RATIO).toBeGreaterThan(0)
+    expect(CLACK_MIN_SECONDS).toBeGreaterThan(0)
+    expect(CLACK_POOL_SIZE).toBeGreaterThanOrEqual(1)
+    expect(CLACK_THROTTLE_MS).toBeGreaterThanOrEqual(0)
+    expect(CLACK_THROTTLE_JITTER_MS).toBeGreaterThanOrEqual(0)
+    expect(CLACK_START_JITTER_MS).toBeGreaterThanOrEqual(0)
+    expect(CLACK_PITCH_JITTER).toBeGreaterThanOrEqual(0)
+    expect(CLACK_FILTER_FREQ_MIN).toBeGreaterThan(0)
+    expect(CLACK_FILTER_FREQ_MAX).toBeGreaterThan(CLACK_FILTER_FREQ_MIN)
+    expect(CLACK_FILTER_Q).toBeGreaterThan(0)
+    expect(CLACK_BASE_GAIN).toBeGreaterThan(0)
+    expect(CLACK_GAIN_JITTER).toBeGreaterThanOrEqual(0)
+    expect(CLACK_MAX_GAIN).toBeGreaterThanOrEqual(CLACK_BASE_GAIN)
+    expect(CLACK_MAX_VOICES).toBeGreaterThan(0)
   })
 })
