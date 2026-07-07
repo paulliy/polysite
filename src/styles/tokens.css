@@ -1,0 +1,16 @@
+/*
+ * Design tokens. Palette rule (CLAUDE.md #6): black background, off-white
+ * characters; links/CTAs are the single exception — navy background with
+ * off-white text. No other colors.
+ */
+:root {
+  --color-bg: #000000;
+  --color-char: #e8e6e1;
+  --color-link-bg: #14285a;
+  --color-link-char: #e8e6e1;
+
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-weight-body: 400;
+  --font-weight-medium: 500;
+  --font-weight-heading: 700;
+}
