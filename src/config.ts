@@ -22,15 +22,21 @@ export const MOBILE_BREAKPOINT_PX = 700
 export const MOBILE_GRID_COLS = 28
 
 /** Duration of one flap hop (one 180° rotation to the next face). */
-export const FLIP_HOP_MS = 150
+export const FLIP_HOP_MS = 120
 
 /**
  * A flip cycles through a few random intermediate faces before landing on
- * its target (count drawn per-cell from this inclusive range) — a short
- * mechanical stutter, never the full alphabet.
+ * its target — a short mechanical stutter, never the full alphabet. The
+ * count is drawn from an inclusive [min, max] range that widens with the
+ * cell's depth on the board: flips near the top settle fast (few or no
+ * intermediates), flips near the bottom flap through more. The active range
+ * is interpolated per row between these TOP (row 0) and BOTTOM (last row)
+ * endpoints.
  */
-export const FLIP_INTERMEDIATE_MIN = 2
-export const FLIP_INTERMEDIATE_MAX = 4
+export const FLIP_INTERMEDIATE_TOP_MIN = 0
+export const FLIP_INTERMEDIATE_TOP_MAX = 1
+export const FLIP_INTERMEDIATE_BOTTOM_MIN = 3
+export const FLIP_INTERMEDIATE_BOTTOM_MAX = 6
 
 /** Delay added per row so multi-cell changes ripple top-to-bottom. */
 export const RIPPLE_ROW_STAGGER_MS = 18

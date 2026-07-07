@@ -44,14 +44,38 @@ export function isIcon(char: string): boolean {
   return ICON_CHARS.has(char)
 }
 
-/** Faces eligible as random flip intermediates: no blank, no icons. */
-export const SPIN_FACES: readonly string[] = CHARACTER_SET.filter(
-  (c) => c !== BLANK && !ICON_CHARS.has(c),
-)
+const UPPER_FACES: readonly string[] = [...UPPER]
+const LOWER_FACES: readonly string[] = [...LOWER]
+const DIGIT_FACES: readonly string[] = [...DIGITS]
+const PUNCTUATION_FACES: readonly string[] = [...PUNCTUATION]
 
-/** A random non-blank, non-icon face for the flap-through animation. */
-export function randomSpinFace(): string {
-  return SPIN_FACES[Math.floor(Math.random() * SPIN_FACES.length)] ?? FALLBACK_FACE
+function poolFor(char: string): readonly string[] | null {
+  if (UPPER.includes(char)) return UPPER_FACES
+  if (LOWER.includes(char)) return LOWER_FACES
+  if (DIGITS.includes(char)) return DIGIT_FACES
+  if (PUNCTUATION.includes(char)) return PUNCTUATION_FACES
+  return null // blank and icons have no spin category
+}
+
+/**
+ * Flip intermediates stay in the target face's category — letters spin
+ * through letters, digits through digits, punctuation through punctuation.
+ * A cell heading to blank spins in its old face's category; blank and icon
+ * faces are never intermediates.
+ */
+export function spinPoolFor(from: string, to: string): readonly string[] {
+  return poolFor(to) ?? poolFor(from) ?? []
+}
+
+/** A random intermediate face, never equal to either endpoint; null if none. */
+export function randomSpinFace(from: string, to: string): string | null {
+  const pool = spinPoolFor(from, to)
+  if (pool.length === 0) return null
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const face = pool[Math.floor(Math.random() * pool.length)] ?? FALLBACK_FACE
+    if (face !== from && face !== to) return face
+  }
+  return null
 }
 
 /** Typographic characters authors commonly paste that we fold to ASCII. */

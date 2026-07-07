@@ -94,10 +94,13 @@ without asking first.
    target grid; untouched cells (including blank-to-blank) never animate. This is
    the job of `engine/cellDiff.ts`.
 2. **Short random cycle, not the full alphabet.** A cell's flip hops through a few
-   random intermediate faces (`FLIP_INTERMEDIATE_MIN`–`MAX` in `src/config.ts`,
-   each hop a 180° rotation of `FLIP_HOP_MS`) before landing on its target face.
-   Never cycle the entire character set the way a real board does. (Owner changed
-   this 2026-07-06 from the original single-flip rule; the brief still describes
+   random intermediate faces before landing on its target face, each hop a 180°
+   rotation of `FLIP_HOP_MS`. The intermediate count is drawn from a range that
+   widens with the cell's row depth (`FLIP_INTERMEDIATE_TOP_MIN`/`_TOP_MAX` →
+   `_BOTTOM_MIN`/`_BOTTOM_MAX` in `src/config.ts`): flips near the top settle
+   fast, flips near the bottom flap through more. Never cycle the entire
+   character set the way a real board does. (Owner changed this 2026-07-06 from
+   the original single-flip rule; the brief still describes
    single-flip.)
 3. **Multi-cell changes ripple top-to-bottom.** When a page change touches many
    cells at once, stagger the flip start times so the wave moves top-to-bottom,

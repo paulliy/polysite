@@ -4,12 +4,12 @@ import {
   CHARACTER_SET,
   FALLBACK_FACE,
   ICONS,
-  SPIN_FACES,
   isFace,
   isIcon,
   normalizeChar,
   normalizeText,
   randomSpinFace,
+  spinPoolFor,
 } from '@/engine/characterSet'
 
 describe('characterSet', () => {
@@ -47,11 +47,32 @@ describe('characterSet', () => {
     expect(normalizeChar('漢')).toBe(FALLBACK_FACE)
   })
 
-  it('spins through real glyphs only — no blank, no icons', () => {
-    expect(SPIN_FACES.length).toBeGreaterThan(50)
-    expect(SPIN_FACES).not.toContain(BLANK)
-    for (const icon of Object.values(ICONS)) expect(SPIN_FACES).not.toContain(icon)
-    for (let i = 0; i < 100; i++) expect(SPIN_FACES).toContain(randomSpinFace())
+  it('keeps flip intermediates in the target face category', () => {
+    for (let i = 0; i < 50; i++) {
+      expect(randomSpinFace('a', 'B')).toMatch(/^[A-Z]$/)
+      expect(randomSpinFace('Q', 'x')).toMatch(/^[a-z]$/)
+      expect(randomSpinFace('1', '7')).toMatch(/^[0-9]$/)
+      expect(randomSpinFace('a', '!')).not.toMatch(/^[A-Za-z0-9 ]$/)
+    }
+  })
+
+  it('never returns an endpoint, blank, or icon as an intermediate', () => {
+    for (let i = 0; i < 50; i++) {
+      const face = randomSpinFace('a', 'b')
+      expect(face).not.toBe('a')
+      expect(face).not.toBe('b')
+      expect(face).not.toBe(BLANK)
+      expect(Object.values(ICONS)).not.toContain(face)
+    }
+  })
+
+  it('spins toward blank in the old face category, and not at all between blanks', () => {
+    expect(spinPoolFor('x', BLANK).every((f) => /^[a-z]$/.test(f))).toBe(true)
+    expect(spinPoolFor('x', BLANK).length).toBeGreaterThan(0)
+    expect(spinPoolFor(BLANK, '5').every((f) => /^[0-9]$/.test(f))).toBe(true)
+    expect(spinPoolFor(BLANK, BLANK)).toHaveLength(0)
+    expect(randomSpinFace(BLANK, BLANK)).toBeNull()
+    expect(spinPoolFor(BLANK, ICONS.email)).toHaveLength(0)
   })
 
   it('folds typographic characters to ASCII at the text level', () => {

@@ -6,8 +6,10 @@ import {
   NAV_ROWS,
   MOBILE_GRID_COLS,
   FLIP_HOP_MS,
-  FLIP_INTERMEDIATE_MIN,
-  FLIP_INTERMEDIATE_MAX,
+  FLIP_INTERMEDIATE_TOP_MIN,
+  FLIP_INTERMEDIATE_TOP_MAX,
+  FLIP_INTERMEDIATE_BOTTOM_MIN,
+  FLIP_INTERMEDIATE_BOTTOM_MAX,
   LOADING_MIN_DURATION_MS,
   IMAGE_BLOCK_SIZE,
 } from '@/config'
@@ -31,9 +33,23 @@ describe('config constants', () => {
 
   it('keeps timing and pixelation constants sane', () => {
     expect(FLIP_HOP_MS).toBeGreaterThan(0)
-    expect(FLIP_INTERMEDIATE_MIN).toBeGreaterThanOrEqual(1)
-    expect(FLIP_INTERMEDIATE_MAX).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_MIN)
     expect(LOADING_MIN_DURATION_MS).toBeGreaterThan(0)
     expect(IMAGE_BLOCK_SIZE).toBeGreaterThanOrEqual(1)
+  })
+
+  it('keeps intermediate-flip ranges valid and increasing with depth', () => {
+    for (const v of [
+      FLIP_INTERMEDIATE_TOP_MIN,
+      FLIP_INTERMEDIATE_TOP_MAX,
+      FLIP_INTERMEDIATE_BOTTOM_MIN,
+      FLIP_INTERMEDIATE_BOTTOM_MAX,
+    ]) {
+      expect(v).toBeGreaterThanOrEqual(0)
+    }
+    expect(FLIP_INTERMEDIATE_TOP_MAX).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_TOP_MIN)
+    expect(FLIP_INTERMEDIATE_BOTTOM_MAX).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_BOTTOM_MIN)
+    // Deeper rows should flap through at least as many intermediates as the top.
+    expect(FLIP_INTERMEDIATE_BOTTOM_MIN).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_TOP_MIN)
+    expect(FLIP_INTERMEDIATE_BOTTOM_MAX).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_TOP_MAX)
   })
 })

@@ -1,30 +1,53 @@
 /**
- * The mechanical clack (brief §2): one short filtered noise burst per ripple
- * row, scheduled through WebAudio. Synthesized at runtime — no audio asset
- * to license or load. Gated by the SOUND_ENABLED code constant; there is no
- * visitor-facing sound setting.
+ * The mechanical clack (brief §2): short filtered noise transients scheduled
+ * through WebAudio, one per flap hop, fired at the moment the flap lands.
+ * Synthesized at runtime — no audio asset to license or load. Gated by the
+ * SOUND_ENABLED code constant; there is no visitor-facing sound setting.
+ *
+ * Designed to read as a natural clatter rather than a machine gun:
+ *  - the clack's length tracks FLIP_HOP_MS, so it resolves as the flap lands
+ *    and stays in sync if that constant changes;
+ *  - every play draws from a small pool of noise grains with random pitch,
+ *    gain, and filter jitter, so no two ticks are identical;
+ *  - trigger times are throttled with a jittered minimum gap (dense impacts
+ *    fold together and get a touch louder), breaking the periodicity that
+ *    makes even spacing sound mechanical.
  *
  * Browsers keep an AudioContext suspended until a user gesture, so the first
  * board transition (initial page load) is silent; a one-time pointer/key
  * listener resumes the context for everything after that.
  */
 
-import { SOUND_ENABLED } from '@/config'
+import { FLIP_HOP_MS, SOUND_ENABLED } from '@/config'
 
 let ctx: AudioContext | null = null
-let noiseBuffer: AudioBuffer | null = null
+let noisePool: AudioBuffer[] = []
 let unlockRegistered = false
 
-const CLACK_SECONDS = 0.03
-const MAX_CLACKS_PER_TRANSITION = 48
+/** Clack length tracks the hop so the tick resolves as the flap lands. */
+const CLACK_SECONDS = Math.max(0.03, (FLIP_HOP_MS / 1000) * 0.7)
+/** Distinct noise grains to pick from, so the sample isn't identical each play. */
+const POOL_SIZE = 6
 
-function buildNoiseBuffer(context: AudioContext): AudioBuffer {
+/** Throttle: min gap between played clacks, jittered so spacing is irregular. */
+const THROTTLE_MS = 20
+const THROTTLE_JITTER_MS = 12
+/** Extra micro-jitter on each scheduled time so even throttled hits aren't even. */
+const START_JITTER_MS = 10
+/** Per-play pitch spread (± fraction of playbackRate). */
+const PITCH_JITTER = 0.18
+/** Hard cap on voices per transition. */
+const MAX_VOICES = 48
+
+function buildNoiseGrain(context: AudioContext): AudioBuffer {
   const length = Math.ceil(context.sampleRate * CLACK_SECONDS)
   const buffer = context.createBuffer(1, length, context.sampleRate)
   const data = buffer.getChannelData(0)
+  const attack = Math.max(1, Math.floor(context.sampleRate * 0.001))
   for (let i = 0; i < length; i++) {
-    // Sharp attack, fast exponential decay.
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (length / 6))
+    // Sharp attack, fast exponential decay that resolves well before the end.
+    const env = Math.min(1, i / attack) * Math.exp(-i / (length * 0.15))
+    data[i] = (Math.random() * 2 - 1) * env
   }
   return buffer
 }
@@ -34,7 +57,9 @@ function ensureContext(): AudioContext | null {
     return null
   }
   ctx ??= new AudioContext()
-  noiseBuffer ??= buildNoiseBuffer(ctx)
+  if (noisePool.length === 0) {
+    noisePool = Array.from({ length: POOL_SIZE }, () => buildNoiseGrain(ctx!))
+  }
 
   if (ctx.state === 'suspended' && !unlockRegistered) {
     unlockRegistered = true
@@ -49,32 +74,63 @@ function ensureContext(): AudioContext | null {
   return ctx
 }
 
+function rand(): number {
+  return Math.random()
+}
+
+/** Schedule one filtered noise transient at `whenMs` (relative to now). */
+function playClack(context: AudioContext, now: number, whenMs: number, weight: number) {
+  const grain = noisePool[Math.floor(rand() * noisePool.length)]
+  if (!grain) return
+
+  const source = context.createBufferSource()
+  source.buffer = grain
+  // Pitch jitter — also nudges length slightly, which is fine.
+  source.playbackRate.value = 1 + (rand() - 0.5) * PITCH_JITTER
+
+  const filter = context.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = 1900 + rand() * 700
+  filter.Q.value = 1.1
+
+  const gain = context.createGain()
+  // Per-play level jitter, plus a gentle rise with how many impacts folded in.
+  const base = 0.13 * (0.85 + rand() * 0.3)
+  gain.gain.value = Math.min(0.32, base * Math.sqrt(weight))
+
+  source.connect(filter)
+  filter.connect(gain)
+  gain.connect(context.destination)
+  source.start(now + Math.max(0, whenMs) / 1000)
+}
+
 /**
- * Play one clack per distinct delay (i.e. per ripple row), spread over the
- * wave. Delays are deduplicated so a full-board change sounds like a
- * mechanical cascade instead of hundreds of simultaneous hits.
+ * Play the clack track for a transition. Each entry in `impactTimesMs` is the
+ * landing time of one flap hop of one cell. Impacts closer than a jittered
+ * minimum gap fold into the previous clack (making it a touch louder), so a
+ * dense ripple thins into a natural, irregular clatter instead of a burst of
+ * evenly-spaced identical hits.
  */
-export function scheduleClacks(delaysMs: number[]) {
+export function scheduleClacks(impactTimesMs: number[]) {
   const context = ensureContext()
-  if (!context || context.state !== 'running' || delaysMs.length === 0) return
+  if (!context || context.state !== 'running' || impactTimesMs.length === 0) return
 
-  const unique = [...new Set(delaysMs)].sort((a, b) => a - b).slice(0, MAX_CLACKS_PER_TRANSITION)
+  const sorted = [...impactTimesMs].sort((a, b) => a - b)
+  const events: Array<{ time: number; weight: number }> = []
+  let lastPlayed = -Infinity
+  for (const time of sorted) {
+    const gap = THROTTLE_MS + (rand() - 0.5) * THROTTLE_JITTER_MS
+    if (time - lastPlayed < gap) {
+      const last = events[events.length - 1]
+      if (last) last.weight++
+      continue
+    }
+    events.push({ time, weight: 1 })
+    lastPlayed = time
+  }
+
   const now = context.currentTime
-  for (const delay of unique) {
-    const source = context.createBufferSource()
-    source.buffer = noiseBuffer
-
-    const filter = context.createBiquadFilter()
-    filter.type = 'bandpass'
-    filter.frequency.value = 2200 + Math.random() * 600
-    filter.Q.value = 1.2
-
-    const gain = context.createGain()
-    gain.gain.value = 0.12
-
-    source.connect(filter)
-    filter.connect(gain)
-    gain.connect(context.destination)
-    source.start(now + delay / 1000)
+  for (const { time, weight } of events.slice(0, MAX_VOICES)) {
+    playClack(context, now, time + (rand() - 0.5) * START_JITTER_MS, weight)
   }
 }

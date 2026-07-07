@@ -2,8 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBoardStore, type BoardCellState } from '@/stores/board'
-import { FLIP_HOP_MS, FLIP_INTERMEDIATE_MIN, FLIP_INTERMEDIATE_MAX } from '@/config'
-import { randomSpinFace } from '@/engine/characterSet'
+import { FLIP_HOP_MS } from '@/config'
 
 const props = defineProps<{ cell: BoardCellState; row: number; col: number }>()
 
@@ -14,31 +13,20 @@ const router = useRouter()
 const flip = computed(() => board.flips.get(`${props.row}:${props.col}`))
 
 /**
- * A flip is a short sequence of flap hops: old face → a few random
- * intermediate faces → target face. Each hop is one 180° rotation; the CSS
- * animation is restarted per hop via the :key below.
+ * A flip renders the store's flap sequence (old face → category-matched
+ * intermediates → target) one 180° hop at a time; the CSS animation is
+ * restarted per hop via the :key below. The store owns the sequence — its
+ * length (which varies with row depth) drives both this animation and the
+ * clack track, so sound and motion stay locked together.
  */
-const faces = ref<string[]>([])
+const faces = computed(() => flip.value?.faces ?? [])
 const hop = ref(0)
 
 watch(
   () => flip.value?.serial,
   () => {
-    if (!flip.value) {
-      faces.value = []
-      hop.value = 0
-      return
-    }
-    const spins =
-      FLIP_INTERMEDIATE_MIN +
-      Math.floor(Math.random() * (FLIP_INTERMEDIATE_MAX - FLIP_INTERMEDIATE_MIN + 1))
-    const sequence = [flip.value.from.face]
-    for (let i = 0; i < spins; i++) sequence.push(randomSpinFace())
-    sequence.push(props.cell.face)
-    faces.value = sequence
     hop.value = 0
   },
-  { immediate: true },
 )
 
 const lastHop = computed(() => hop.value >= faces.value.length - 2)

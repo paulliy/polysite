@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useBoardStore } from '@/stores/board'
 import { paginateMarkdown } from '@/engine/paginate'
-import { FOOTER_ROWS, GRID_COLS, GRID_ROWS, NAV_ROWS, RIPPLE_ROW_STAGGER_MS } from '@/config'
+import {
+  FOOTER_ROWS,
+  GRID_COLS,
+  GRID_ROWS,
+  NAV_ROWS,
+  RIPPLE_ROW_STAGGER_MS,
+  FLIP_INTERMEDIATE_TOP_MAX,
+  FLIP_INTERMEDIATE_BOTTOM_MIN,
+} from '@/config'
 import { BLANK } from '@/engine/characterSet'
 
 const CONTENT_ROWS = GRID_ROWS - NAV_ROWS - FOOTER_ROWS
@@ -152,12 +160,49 @@ describe('board store', () => {
     expect(board.flips.has(`${NAV_ROWS}:1`)).toBe(true)
   })
 
+  it('draws fewer intermediate flaps near the top than near the bottom', () => {
+    const board = useBoardStore()
+    // A full page of words so every content row flips from blank.
+    board.setPage(paginateMarkdown('word '.repeat(3000), { cols: GRID_COLS, rows: CONTENT_ROWS }))
+
+    const lengthsByRow = new Map<number, number[]>()
+    for (const [key, flip] of board.flips) {
+      const row = Number(key.split(':')[0])
+      ;(lengthsByRow.get(row) ?? lengthsByRow.set(row, []).get(row)!).push(flip.faces.length)
+    }
+
+    const topRow = NAV_ROWS // first content row
+    const bottomRow = NAV_ROWS + CONTENT_ROWS - 1 // last content row
+    const longestTop = Math.max(...(lengthsByRow.get(topRow) ?? []))
+    const shortestBottom = Math.min(...(lengthsByRow.get(bottomRow) ?? []))
+
+    // faces = [from, ...intermediates, to], so length = intermediates + 2.
+    expect(longestTop).toBeLessThanOrEqual(FLIP_INTERMEDIATE_TOP_MAX + 2)
+    expect(shortestBottom).toBeGreaterThanOrEqual(FLIP_INTERMEDIATE_BOTTOM_MIN + 2)
+    expect(shortestBottom).toBeGreaterThan(longestTop)
+  })
+
   it('does not flip anything when the target equals the current board', () => {
     const board = useBoardStore()
     const [frame] = paginateMarkdown('same text', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
     board.setPage([frame!])
     expect(board.flips.size).toBe(0)
+  })
+
+  it('gives every flip a face sequence from old face to target that the cell renders', () => {
+    const board = useBoardStore()
+    const [frame] = paginateMarkdown('Hi 42', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([frame!])
+    expect(board.flips.size).toBeGreaterThan(0)
+    for (const flip of board.flips.values()) {
+      // At minimum old → target; BoardCell steps through faces hop by hop, so
+      // an empty/short sequence would skip the intermediates (the bug we hit).
+      expect(flip.faces.length).toBeGreaterThanOrEqual(2)
+      expect(flip.faces[0]).toBe(flip.from.face)
+      expect(flip.faces.at(-1)).not.toBe(BLANK) // every target here is a glyph
+      for (const face of flip.faces.slice(1, -1)) expect(face).not.toBe(BLANK)
+    }
   })
 
   it('staggers flip delays by global row for the top-to-bottom ripple', () => {
