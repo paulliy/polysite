@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { watch } from 'vue'
 import { useBoardStore } from '@/stores/board'
 import BoardCell from './BoardCell.vue'
 import type { Line, LinkSpan } from '@/engine/types'
@@ -42,9 +42,9 @@ function buildNavLines(cols: number): Line[] {
 
 const board = useBoardStore()
 
-onMounted(() => {
-  board.setNav(buildNavLines(board.cols))
-})
+// Rebuild the nav on mount and whenever the column count changes (the board
+// crossed the mobile breakpoint and re-flowed to a new width).
+watch(() => board.cols, (cols) => board.setNav(buildNavLines(cols)), { immediate: true })
 </script>
 
 <template>

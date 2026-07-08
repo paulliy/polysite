@@ -13,8 +13,10 @@ import {
   RIPPLE_DURATION_MS,
   RIPPLE_CURVE,
 } from '@/config'
-import { randomLoadingFace } from '@/engine/characterSet'
+import { isIcon, randomLoadingFace } from '@/engine/characterSet'
+import { iconSvg } from '@/engine/icons'
 import { rippleDelayMs } from '@/engine/ripple'
+import IconGlyph from './IconGlyph.vue'
 
 const props = defineProps<{ cell: BoardCellState; row: number; col: number }>()
 
@@ -40,9 +42,10 @@ const flipEl = ref<HTMLElement | null>(null)
 const frontEl = ref<HTMLElement | null>(null)
 const backEl = ref<HTMLElement | null>(null)
 
-// Start mounted iff the board is still in its loading intro (folds `.flip` into
-// the first render instead of a second patch), then unmount once settled.
-const showFlip = ref(board.loading)
+// Start mounted iff the board is animating its loading intro (folds `.flip`
+// into the first render instead of a second patch), then unmount once settled.
+// With reduced motion nothing animates, so it starts unmounted (static face).
+const showFlip = ref(board.loading && !board.reducedMotion)
 /** A targeted flip awaiting its ripple turn: hold the OLD face. */
 const waiting = ref(false)
 
@@ -75,6 +78,14 @@ function faceClassName(base: string, cell: BoardCellState, painted: boolean): st
   if (painted && cell.href !== null) className += ' face--link'
   if (painted && cell.heading) className += ' face--heading'
   return className
+}
+
+/** Set a flip face's content — inline SVG for icon faces, text otherwise.
+ *  Handles switching either way as an element is reused across hops. */
+function setFaceContent(el: HTMLElement, face: string) {
+  const svg = iconSvg(face)
+  if (svg) el.innerHTML = svg
+  else el.textContent = face
 }
 
 /** One 180° rotation of the `.flip` element. */
@@ -151,7 +162,7 @@ function settle() {
         showFlip.value = false
         return
       }
-      back.textContent = props.cell.face
+      setFaceContent(back, props.cell.face)
       back.className = faceClassName('face face--back', props.cell, true)
       animation?.cancel()
       animation = rotate(FLIP_HOP_MS)
@@ -186,10 +197,10 @@ function startFlip(g: number) {
     let step = 0
     const runHop = () => {
       if (g !== gen) return
-      front.textContent = faces[step] ?? props.cell.face
+      setFaceContent(front, faces[step] ?? props.cell.face)
       front.className = faceClassName('face face--front', f.from, step === 0)
       animation?.cancel()
-      back.textContent = faces[step + 1] ?? props.cell.face
+      setFaceContent(back, faces[step + 1] ?? props.cell.face)
       back.className = faceClassName('face face--back', props.cell, step === lastHop)
       animation = rotate(FLIP_HOP_MS)
       if (!animation) return
@@ -209,22 +220,23 @@ function startFlip(g: number) {
 }
 
 onMounted(() => {
-  if (board.loading) startNoise()
+  if (board.loading && !board.reducedMotion) startNoise()
 })
 
-// Intro reveal: noise → settled content on the ripple wave.
+// Intro reveal: noise → settled content on the ripple wave (skipped when the
+// visitor prefers reduced motion — the content is already shown statically).
 watch(
   () => board.loading,
   (isLoading, was) => {
-    if (was && !isLoading) settle()
+    if (was && !isLoading && !board.reducedMotion) settle()
   },
 )
 
-// Targeted flips (suppressed by the store while loading, so inert then).
+// Targeted flips (suppressed by the store while loading or reduced-motion).
 watch(
   () => flip.value?.serial,
   (serial) => {
-    if (board.loading) return
+    if (board.loading || board.reducedMotion) return
     const g = ++gen
     clearTimer()
     animation?.cancel()
@@ -275,13 +287,14 @@ function follow() {
       <span ref="backEl" class="face face--back"></span>
     </span>
     <!-- Targeted flip awaiting its ripple turn: hold the OLD face. -->
-    <span
-      v-else-if="waiting && flip"
-      class="face"
-      :class="faceClasses(flip.from)"
-      >{{ flip.from.face }}</span
-    >
-    <span v-else class="face" :class="faceClasses(cell)">{{ cell.face }}</span>
+    <span v-else-if="waiting && flip" class="face" :class="faceClasses(flip.from)">
+      <IconGlyph v-if="isIcon(flip.from.face)" :char="flip.from.face" />
+      <template v-else>{{ flip.from.face }}</template>
+    </span>
+    <span v-else class="face" :class="faceClasses(cell)">
+      <IconGlyph v-if="isIcon(cell.face)" :char="cell.face" />
+      <template v-else>{{ cell.face }}</template>
+    </span>
   </span>
 </template>
 

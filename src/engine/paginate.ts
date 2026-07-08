@@ -11,14 +11,21 @@
  * are parsed out and ignored until the image pipeline lands in Phase 8.
  */
 
-import type { Frame, Line, LinkSpan } from './types'
-import { BLANK, normalizeChar, normalizeText } from './characterSet'
+import type { Frame, InlineSegment, Line, LinkSpan, SemanticBlock } from './types'
+import { BLANK, expandIconShortcodes, isIcon, normalizeChar, normalizeText } from './characterSet'
+import { ICON_LABELS } from './icons'
 
 export interface PaginateOptions {
   /** Content-region width in character cells. */
   cols: number
   /** Content-region height in lines (grid rows minus nav rows). */
   rows: number
+  /**
+   * Resolves an image `src` to its pre-rendered pixelated character lines, or
+   * null if it isn't ready. Injected so the engine stays pure — the browser
+   * canvas pipeline lives in content/imageLoader.ts.
+   */
+  image?: (src: string) => string[] | null
 }
 
 const BLANK_LINE: Line = { text: '', kind: 'body', links: [] }
@@ -28,14 +35,17 @@ const BLANK_LINE: Line = { text: '', kind: 'body', links: [] }
 // ---------------------------------------------------------------------------
 
 interface Block {
-  kind: 'heading' | 'paragraph' | 'listItem'
+  kind: 'heading' | 'paragraph' | 'listItem' | 'image'
+  /** Inline text, or (for image blocks) the alt text. */
   text: string
   level?: number
+  /** Image source (image blocks only). */
+  src?: string
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/
 const LIST_ITEM_RE = /^[-*]\s+(.*)$/
-const IMAGE_RE = /^!\[[^\]]*\]\([^)]*\)$/
+const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/
 
 function parseBlocks(markdown: string): Block[] {
   const blocks: Block[] = []
@@ -57,10 +67,11 @@ function parseBlocks(markdown: string): Block[] {
       openListItem = null
       continue
     }
-    if (IMAGE_RE.test(line)) {
-      // Image blocks are ignored until Phase 8's grid-pixelation pipeline.
+    const image = IMAGE_RE.exec(line)
+    if (image) {
       flush()
       openListItem = null
+      blocks.push({ kind: 'image', text: image[1] ?? '', src: image[2] ?? '' })
       continue
     }
     const heading = HEADING_RE.exec(line)
@@ -105,7 +116,7 @@ function stripEmphasis(text: string): string {
 
 /** Collapse runs of whitespace and resolve links/emphasis to plain text. */
 function parseInline(raw: string): FlatText {
-  const source = normalizeText(raw).replace(/\s+/g, ' ').trim()
+  const source = expandIconShortcodes(normalizeText(raw)).replace(/\s+/g, ' ').trim()
   let text = ''
   const links: LinkSpan[] = []
   let lastIndex = 0
@@ -122,6 +133,69 @@ function parseInline(raw: string): FlatText {
   }
   text += stripEmphasis(source.slice(lastIndex))
   return { text, links }
+}
+
+// ---------------------------------------------------------------------------
+// Semantic blocks (accessible parallel DOM — CLAUDE.md #11)
+// ---------------------------------------------------------------------------
+
+/** Icon faces are decorative on the board; drop them from readable text. */
+function stripIcons(text: string): string {
+  return [...text].map((ch) => (isIcon(ch) ? '' : ch)).join('')
+}
+
+/** Fallback readable text for an icon-only link: its icons' accessible labels. */
+function iconLabelsOf(text: string): string {
+  return [...text]
+    .filter(isIcon)
+    .map((ch) => ICON_LABELS[ch] ?? '')
+    .join(' ')
+    .trim()
+}
+
+/** Split flat text + link spans into an ordered run of plain/link segments,
+ *  with decorative icon faces resolved for assistive tech. */
+function toSegments(flat: FlatText): InlineSegment[] {
+  const segments: InlineSegment[] = []
+  let cursor = 0
+  const pushText = (raw: string) => {
+    // Collapse whitespace left by removed icons, but keep inter-segment spacing.
+    const text = stripIcons(raw).replace(/\s+/g, ' ')
+    if (text.trim()) segments.push({ text })
+  }
+  for (const link of flat.links) {
+    if (link.start > cursor) pushText(flat.text.slice(cursor, link.start))
+    const raw = flat.text.slice(link.start, link.end)
+    const cleaned = stripIcons(raw).replace(/\s+/g, ' ').trim()
+    segments.push({ text: cleaned || iconLabelsOf(raw), href: link.href })
+    cursor = link.end
+  }
+  if (cursor < flat.text.length) pushText(flat.text.slice(cursor))
+  return segments
+}
+
+/**
+ * The full page as real semantic blocks (headings, paragraphs, list items with
+ * inline links) — the source for the visually-hidden parallel DOM that screen
+ * readers and Ctrl+F use. Unlike `paginateMarkdown`, this is layout-free: it's
+ * the whole document, not sliced into grid frames.
+ */
+export function toSemanticBlocks(markdown: string): SemanticBlock[] {
+  const out: SemanticBlock[] = []
+  for (const block of parseBlocks(markdown)) {
+    if (block.kind === 'image') {
+      // Represent the image by its alt text so screen readers still get it.
+      const alt = block.text.trim()
+      if (alt) out.push({ kind: 'paragraph', segments: [{ text: alt }] })
+      continue
+    }
+    out.push({
+      kind: block.kind,
+      ...(block.level !== undefined ? { level: block.level } : {}),
+      segments: toSegments(parseInline(block.text)),
+    })
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +283,19 @@ function wrapFlatText(
 
 const LIST_INDENT = 2
 
-function renderBlock(block: Block, cols: number): Line[] {
+function renderImageBlock(src: string, cols: number, resolve?: PaginateOptions['image']): Line[] {
+  const charLines = resolve?.(src) ?? null
+  if (!charLines) return [] // not loaded yet — appears on the next re-paginate
+  return charLines.map((text) => {
+    const pad = Math.max(0, Math.floor((cols - text.length) / 2))
+    return { text: ' '.repeat(pad) + text, kind: 'body' as const, links: [] }
+  })
+}
+
+function renderBlock(block: Block, cols: number, image?: PaginateOptions['image']): Line[] {
+  if (block.kind === 'image') {
+    return renderImageBlock(block.src ?? '', cols, image)
+  }
   const flat = parseInline(block.text)
   if (block.kind === 'heading') {
     return wrapFlatText(flat, cols, 'heading', block.level)
@@ -233,35 +319,50 @@ function renderBlock(block: Block, cols: number): Line[] {
 // ---------------------------------------------------------------------------
 
 export function paginateMarkdown(markdown: string, options: PaginateOptions): Frame[] {
-  const { cols, rows } = options
+  const { cols, rows, image } = options
   if (cols < 1 || rows < 1) throw new Error(`invalid frame size ${cols}x${rows}`)
 
+  // Build line groups: each text line is its own (splittable) group; an image
+  // is one atomic group that must not break across a frame boundary.
   const blocks = parseBlocks(markdown)
-  const lines: Line[] = []
+  const groups: Line[][] = []
   let previous: Block | undefined
   for (const block of blocks) {
+    const rendered = renderBlock(block, cols, image)
+    // An unresolved image renders to nothing; skip its separator too.
+    if (rendered.length === 0 && block.kind === 'image') continue
     // One separator line between blocks, except between consecutive list items.
     if (previous && !(previous.kind === 'listItem' && block.kind === 'listItem')) {
-      lines.push(BLANK_LINE)
+      groups.push([BLANK_LINE])
     }
-    lines.push(...renderBlock(block, cols))
+    if (block.kind === 'image') groups.push(rendered)
+    else for (const line of rendered) groups.push([line])
     previous = block
   }
 
   const frames: Frame[] = []
   let current: Line[] = []
-  for (const line of lines) {
-    if (current.length === 0 && line.text === '') continue // no separator at frame top
-    current.push(line)
-    if (current.length === rows) {
-      frames.push({ lines: current })
-      current = []
-    }
-  }
-  if (current.length > 0 || frames.length === 0) {
+  const flushFrame = () => {
     while (current.length < rows) current.push(BLANK_LINE)
     frames.push({ lines: current })
+    current = []
   }
+  for (const group of groups) {
+    // Never open a frame on a blank separator.
+    if (current.length === 0 && group.length === 1 && group[0]!.text === '') continue
+    // Keep an atomic group (image) whole: page-break before it if it won't fit.
+    if (group.length > 1 && current.length > 0 && current.length + group.length > rows) {
+      flushFrame()
+    }
+    for (const line of group) {
+      current.push(line)
+      if (current.length === rows) {
+        frames.push({ lines: current })
+        current = []
+      }
+    }
+  }
+  if (current.length > 0 || frames.length === 0) flushFrame()
   return frames
 }
 

@@ -121,10 +121,20 @@ describe('paginateMarkdown — pagination', () => {
     expect(texts(frames[0])).toEqual(['', '', '', '', ''])
   })
 
-  it('ignores image blocks until Phase 8', () => {
+  it('renders nothing for an image with no resolver, keeping surrounding text', () => {
     const [frame] = paginateMarkdown('before\n\n![alt](/img.png)\n\nafter', OPTS)
     expect(texts(frame).join('|')).not.toContain('img.png')
     expect(texts(frame)[0]).toBe('before')
+    expect(texts(frame)[2]).toBe('after')
+  })
+
+  it('inserts a resolved image as centered pixel rows', () => {
+    const image = (src: string) => (src === '/img.png' ? ['##', '##'] : null)
+    const [frame] = paginateMarkdown('hi\n\n![alt](/img.png)', { cols: 6, rows: 6, image })
+    // Two pixel rows, centered in 6 cols: pad = floor((6-2)/2) = 2.
+    expect(texts(frame)[0]).toBe('hi')
+    expect(texts(frame)[2]).toBe('  ##')
+    expect(texts(frame)[3]).toBe('  ##')
   })
 })
 

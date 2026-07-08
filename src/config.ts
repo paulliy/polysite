@@ -32,9 +32,14 @@ export const NAV_ROWS = 2
  */
 export const FOOTER_ROWS = 2
 
-/** Below this viewport width the board re-paginates to the narrow grid. */
+/**
+ * Below this viewport width the board re-paginates to a narrower, taller grid
+ * (a portrait phone gets fewer columns but more rows) rather than scaling the
+ * desktop grid down until the text is unreadable.
+ */
 export const MOBILE_BREAKPOINT_PX = 700
 export const MOBILE_GRID_COLS = 28
+export const MOBILE_GRID_ROWS = 34
 
 /** Duration of one flap hop (one 180° rotation to the next face). */
 export const FLIP_HOP_MS = 120
@@ -54,16 +59,18 @@ export const FLIP_INTERMEDIATE_BOTTOM_MIN = 2
 export const FLIP_INTERMEDIATE_BOTTOM_MAX = 3
 
 /**
- * Ripple timing for multi-cell changes (CLAUDE.md #3): a full top-to-bottom
- * sweep — from the first changed row to the last — takes RIPPLE_DURATION_MS,
- * however many rows are actually involved. RIPPLE_CURVE shapes how that
- * fixed time budget is distributed across row depth: 'linear' spaces delays
- * evenly, 'ease-in' starts slow and accelerates toward the bottom,
- * 'ease-out' starts fast and settles, 'ease-in-out' does both. See
- * engine/ripple.ts for the curve math.
+ * Ripple timing for multi-cell changes (CLAUDE.md #3): each cell's flip delay
+ * is proportional to its row's depth on the board (top row = 0, bottom row =
+ * RIPPLE_DURATION_MS), so a change spanning the whole board sweeps top-to-bottom
+ * over RIPPLE_DURATION_MS. (Delays are anchored to absolute board depth, not to
+ * the range of changed rows — in practice content changes always include the
+ * top content row, so the wave still starts promptly.) RIPPLE_CURVE shapes how
+ * the budget is distributed across depth: 'linear' spaces delays evenly,
+ * 'ease-in' starts slow and accelerates toward the bottom, 'ease-out' starts
+ * fast and settles, 'ease-in-out' does both. See engine/ripple.ts.
  */
 export const RIPPLE_DURATION_MS = 1100
-export const RIPPLE_CURVE: RippleCurve = 'ease-out'
+export const RIPPLE_CURVE: RippleCurve = 'ease-in'
 
 /**
  * Minimum time the random-noise loading state runs, even if content is ready

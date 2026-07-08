@@ -7,6 +7,8 @@
 
 export const BLANK = ' '
 export const FALLBACK_FACE = '?'
+/** Full-cell block, the "lit" face for pixelated images (brief §2). */
+export const BLOCK = '█'
 
 export const ICONS = {
   email: '\uE000',
@@ -25,6 +27,7 @@ const PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
 export const CHARACTER_SET: readonly string[] = [
   BLANK,
+  BLOCK,
   ...UPPER,
   ...LOWER,
   ...DIGITS,
@@ -42,6 +45,22 @@ export function isFace(char: string): boolean {
 
 export function isIcon(char: string): boolean {
   return ICON_CHARS.has(char)
+}
+
+/** Authorable `:name:` tokens that expand to icon faces in content. */
+const ICON_SHORTCODES: Record<string, string> = {
+  ':mail:': ICONS.email,
+  ':external:': ICONS.externalLink,
+  ':arrow:': ICONS.arrowRight,
+  ':github:': ICONS.github,
+  ':linkedin:': ICONS.linkedin,
+}
+
+const SHORTCODE_RE = /:(?:mail|external|arrow|github|linkedin):/g
+
+/** Replace `:name:` shortcodes with their single icon face character. */
+export function expandIconShortcodes(text: string): string {
+  return text.replace(SHORTCODE_RE, (match) => ICON_SHORTCODES[match] ?? match)
 }
 
 const UPPER_FACES: readonly string[] = [...UPPER]

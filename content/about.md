@@ -10,8 +10,9 @@ the characters that change between frames flip.
 
 ## Elsewhere
 
-- write me: [paulfangli@gmail.com](mailto:paulfangli@gmail.com)
-- code: [github](https://github.com/polygon)
+- [:mail: paulfangli@gmail.com](mailto:paulfangli@gmail.com)
+- [:github: github](https://github.com/polygon)
+- [:linkedin: linkedin](https://linkedin.com/in/polygon)
 
 ## Colophon
 

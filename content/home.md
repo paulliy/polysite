@@ -4,7 +4,8 @@ Software, products, and the occasional mechanical interface. This whole
 site is one split-flap board: scroll to page through content, or use the
 links in the top row.
 
-Start with the [projects](/projects), or read a little [about me](/about).
+Start with the [projects :arrow:](/projects), or read a little
+[about me](/about).
 
 ## Now
 

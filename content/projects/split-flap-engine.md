@@ -36,6 +36,8 @@ Images get the same treatment at a larger scale: a canvas samples the
 source picture, averages brightness per character cell, and dithers the
 result down to lit and unlit cells on the grid.
 
+![A pixelated mountain scene rendered in board cells](/images/demo.svg)
+
 ## Try it
 
 Head back to [projects](/projects) or the [home page](/) and watch the

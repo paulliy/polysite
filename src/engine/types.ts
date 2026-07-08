@@ -41,3 +41,18 @@ export interface PixelSource {
   height: number
   data: Uint8ClampedArray
 }
+
+/** A run of inline text, optionally a link, for the accessible parallel DOM. */
+export interface InlineSegment {
+  text: string
+  href?: string
+}
+
+/** A page's real semantic content, rendered as hidden HTML for screen readers
+ *  and page-search (independent of the split-flap grid layout). */
+export interface SemanticBlock {
+  kind: 'heading' | 'paragraph' | 'listItem'
+  /** Heading level (1–6); only present when kind === 'heading'. */
+  level?: number
+  segments: InlineSegment[]
+}

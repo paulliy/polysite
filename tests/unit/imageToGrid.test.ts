@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { gridDimensionsFor, pixelsToGrid } from '@/engine/imageToGrid'
+import { gridDimensionsFor, gridToCharLines, pixelsToGrid } from '@/engine/imageToGrid'
+import { BLANK, BLOCK } from '@/engine/characterSet'
 import type { PixelSource } from '@/engine/types'
+
+describe('gridToCharLines', () => {
+  it('maps lit cells to the block face and unlit to blank', () => {
+    expect(
+      gridToCharLines([
+        [true, false],
+        [false, true],
+      ]),
+    ).toEqual([`${BLOCK}${BLANK}`, `${BLANK}${BLOCK}`])
+  })
+
+  it('accepts custom lit/unlit characters', () => {
+    expect(gridToCharLines([[true, false]], '#', '.')).toEqual(['#.'])
+  })
+})
 
 /** Build an RGBA buffer from rows of 0..255 gray values. */
 function grayImage(rows: number[][]): PixelSource {

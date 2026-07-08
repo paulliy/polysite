@@ -2,10 +2,12 @@
  * Image → two-tone grid approximation (brief §2): sample pixel brightness per
  * character cell, then threshold or ordered-dither down to on (off-white) /
  * off (black). This module is the pure half — it consumes an RGBA buffer.
- * The canvas glue that produces that buffer from an <img> lands in Phase 8.
+ * The canvas glue that produces that buffer from an <img> lives in
+ * content/imageLoader.ts (browser-only).
  */
 
 import type { PixelSource } from './types'
+import { BLANK, BLOCK } from './characterSet'
 
 export interface ImageToGridOptions {
   /** Output grid size in character cells. */
@@ -39,6 +41,15 @@ export function gridDimensionsFor(
   }
   const cols = maxRows / ((imageHeight / imageWidth) * cellAspect)
   return { cols: Math.max(1, Math.round(cols)), rows: maxRows }
+}
+
+/**
+ * Render a boolean grid (true = lit) as board character lines: a filled block
+ * for lit cells, blank for unlit. These flow into pagination as ordinary
+ * character rows, so a pixelated image flips like any other content.
+ */
+export function gridToCharLines(grid: boolean[][], lit = BLOCK, unlit = BLANK): string[] {
+  return grid.map((row) => row.map((cell) => (cell ? lit : unlit)).join(''))
 }
 
 // 4x4 Bayer matrix; values normalized to (0, 1) thresholds.

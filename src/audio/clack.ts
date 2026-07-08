@@ -150,22 +150,30 @@ function playClack(context: AudioContext, now: number, whenMs: number, weight: n
   source.start(now + Math.max(0, whenMs) / 1000)
 }
 
-/**
- * Play the clack track for a transition. Each entry in `impactTimesMs` is the
- * landing time of one flap hop of one cell. Impacts closer than a jittered
- * minimum gap fold into the previous clack (making it a touch louder), so a
- * dense ripple thins into a natural, irregular clatter instead of a burst of
- * evenly-spaced identical hits.
- */
-export function scheduleClacks(impactTimesMs: number[]) {
-  const context = ensureContext()
-  if (!context || context.state !== 'running' || impactTimesMs.length === 0) return
+export interface ClackEvent {
+  time: number
+  /** How many impacts folded into this one clack (drives its loudness). */
+  weight: number
+}
 
+/**
+ * Thin a list of impact times into played clacks: impacts closer than a
+ * jittered minimum gap fold into the previous clack (its `weight` grows), so a
+ * dense ripple becomes a natural, irregular clatter instead of a burst of
+ * evenly-spaced identical hits. Pure (rng injectable) so it can be unit-tested
+ * without WebAudio.
+ */
+export function foldImpacts(
+  impactTimesMs: number[],
+  throttleMs: number,
+  jitterMs: number,
+  rng: () => number = Math.random,
+): ClackEvent[] {
   const sorted = [...impactTimesMs].sort((a, b) => a - b)
-  const events: Array<{ time: number; weight: number }> = []
+  const events: ClackEvent[] = []
   let lastPlayed = -Infinity
   for (const time of sorted) {
-    const gap = CLACK_THROTTLE_MS + (rand() - 0.5) * CLACK_THROTTLE_JITTER_MS
+    const gap = throttleMs + (rng() - 0.5) * jitterMs
     if (time - lastPlayed < gap) {
       const last = events[events.length - 1]
       if (last) last.weight++
@@ -174,7 +182,18 @@ export function scheduleClacks(impactTimesMs: number[]) {
     events.push({ time, weight: 1 })
     lastPlayed = time
   }
+  return events
+}
 
+/**
+ * Play the clack track for a transition. Each entry in `impactTimesMs` is the
+ * landing time of one flap hop of one cell.
+ */
+export function scheduleClacks(impactTimesMs: number[]) {
+  const context = ensureContext()
+  if (!context || context.state !== 'running' || impactTimesMs.length === 0) return
+
+  const events = foldImpacts(impactTimesMs, CLACK_THROTTLE_MS, CLACK_THROTTLE_JITTER_MS, rand)
   const now = context.currentTime
   for (const { time, weight } of events.slice(0, CLACK_MAX_VOICES)) {
     playClack(context, now, time + (rand() - 0.5) * CLACK_START_JITTER_MS, weight)
