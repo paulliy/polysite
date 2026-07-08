@@ -83,19 +83,27 @@ if (reduced.value) {
   // Reduced motion: no noise intro — content is shown directly (CLAUDE.md #11).
   board.finishLoading()
 } else {
-  // Arm the audio unlock now so a gesture during the loading intro leaves the
-  // context running in time for the reveal's clacks (browser autoplay policy).
+  // Arm the audio unlock now so the visitor's start gesture leaves the context
+  // running in time for the reveal's clacks (browser autoplay policy).
   primeClack()
 
-  // Reveal once the noise has run its minimum, content is ready, AND audio is
-  // unlocked (the first gesture) so the reveal's clack cascade is heard — or
-  // after the max-wait fallback, whichever comes first.
-  Promise.all([
-    whenLoadingComplete(contentReady),
-    whenAudioReady(LOADING_REVEAL_MAX_WAIT_MS),
-  ]).then(() => {
-    board.finishLoading()
+  // The intro holds on the loading noise until the visitor's first gesture —
+  // the board only reveals on a click or key press ("CLICK TO START"). That
+  // same gesture unlocks audio, so once it arrives we wait for the context to
+  // actually run (capped) before revealing, and the clack cascade is heard.
+  const firstInput = new Promise<void>((resolve) => {
+    const onStart = () => {
+      window.removeEventListener('pointerdown', onStart)
+      window.removeEventListener('keydown', onStart)
+      resolve()
+    }
+    window.addEventListener('pointerdown', onStart)
+    window.addEventListener('keydown', onStart)
   })
+
+  Promise.all([whenLoadingComplete(contentReady), firstInput])
+    .then(() => whenAudioReady(LOADING_REVEAL_MAX_WAIT_MS))
+    .then(() => board.finishLoading())
 }
 
 useScrollPosition({ onStep: (delta) => board.advance(delta) })

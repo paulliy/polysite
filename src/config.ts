@@ -59,6 +59,15 @@ export const FLIP_INTERMEDIATE_BOTTOM_MIN = 2
 export const FLIP_INTERMEDIATE_BOTTOM_MAX = 3
 
 /**
+ * The nav lives on the top rows, where the depth model above draws ~0
+ * intermediates, so a hover flip (dash → caret, item → navy) would read as a
+ * plain swap. Nav commits instead request their intermediate count at this
+ * fixed depth fraction (0 = top range, 1 = bottom range) so the flip still
+ * flaps through a few faces regardless of the nav's actual row.
+ */
+export const NAV_FLIP_SPIN_FRACTION = 1
+
+/**
  * Ripple timing for multi-cell changes (CLAUDE.md #3): each cell's flip delay
  * is proportional to its row's depth on the board (top row = 0, bottom row =
  * RIPPLE_DURATION_MS), so a change spanning the whole board sweeps top-to-bottom
@@ -100,10 +109,18 @@ export const LOADING_MAX_CONCURRENT = 220
 export const LOADING_GAP_JITTER = 0.6
 
 /**
- * The reveal waits for audio to be unlocked (the visitor's first gesture) so
- * its clack cascade is actually heard — but no longer than this, after which
- * it reveals anyway (silently). Guarantees the board never hangs on the noise
- * for a visitor who doesn't interact.
+ * The intro holds on the loading noise until the visitor's first gesture, so
+ * the board only reveals on a click or key press. This prompt is spelled out in
+ * a centered strip of the noise (BoardCell holds these cells static) as the
+ * cue. Empty string to show no prompt. Kept short so it fits the mobile width.
+ */
+export const LOADING_MESSAGE = 'CLICK TO START'
+
+/**
+ * Once the first gesture arrives, the reveal waits this long for audio to
+ * actually unlock (so its clack cascade is heard) before revealing anyway — a
+ * short safety cap, not an auto-reveal: without a gesture the board holds on the
+ * noise indefinitely (see LOADING_MESSAGE).
  */
 export const LOADING_REVEAL_MAX_WAIT_MS = 8000
 

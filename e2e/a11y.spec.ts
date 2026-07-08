@@ -36,6 +36,13 @@ test('hidden nav links are keyboard-focusable and route', async ({ page }) => {
 test.describe('prefers-reduced-motion', () => {
   test.use({ reducedMotion: 'reduce' })
 
+  // Belt-and-suspenders: also emulate at runtime so window.matchMedia reflects
+  // the preference (the context-level option alone doesn't surface to
+  // matchMedia in this Playwright build), which is how the app detects it.
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+  })
+
   test('shows content directly with no flips on load', async ({ page }) => {
     await page.goto('/projects/split-flap-engine')
     // Content is present immediately on the board — the real heading text.

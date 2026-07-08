@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { settle, start } from './helpers'
 
 test('navigation flips changed cells while unchanged nav cells hold still', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.board')).toBeVisible()
-  // Let the initial flip-in settle completely.
-  await expect(page.locator('.flip')).toHaveCount(0, { timeout: 10_000 })
+  // Start the intro and let the initial flip-in settle completely.
+  await start(page)
+  await settle(page)
 
   await page.locator('[data-href="/projects"]').first().click()
 
@@ -16,14 +18,15 @@ test('navigation flips changed cells while unchanged nav cells hold still', asyn
   await expect(titleCell).toHaveText('P')
 
   // Everything settles back to plain faces.
-  await expect(page.locator('.flip')).toHaveCount(0, { timeout: 10_000 })
+  await settle(page)
 })
 
 test('scrolling a long article flips only the cells that change', async ({ page }) => {
   await page.goto('/projects/split-flap-engine')
-  await expect(page.locator('.flip')).toHaveCount(0, { timeout: 10_000 })
+  await start(page)
+  await settle(page)
 
   await page.keyboard.press('ArrowDown')
   await expect(page.locator('.flip').first()).toBeVisible()
-  await expect(page.locator('.flip')).toHaveCount(0, { timeout: 10_000 })
+  await settle(page)
 })

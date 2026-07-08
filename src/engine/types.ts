@@ -8,6 +8,11 @@ export interface LinkSpan {
   start: number
   end: number
   href: string
+  /**
+   * Whether this link paints as a navy CTA. Defaults to true (content links).
+   * Nav items set it false so they stay plain until hovered (NavBar drives it).
+   */
+  paint?: boolean
 }
 
 export type LineKind = 'body' | 'heading'

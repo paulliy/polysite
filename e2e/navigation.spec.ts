@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { settle, start } from './helpers'
 
 declare global {
   interface Window {
@@ -9,6 +10,8 @@ declare global {
 test('nav links route to real URLs without remounting the board', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.board')).toBeVisible()
+  await start(page)
+  await settle(page)
 
   // Remember the live board DOM node, then navigate via a nav link cell.
   await page.evaluate(() => {
@@ -38,8 +41,10 @@ test('unknown paths show the 404 content on the board', async ({ page }) => {
 
 test('keyboard input pages through a long article', async ({ page }) => {
   await page.goto('/projects/split-flap-engine')
-  // Wait for the arrival flips to settle so we read settled faces.
-  await expect(page.locator('.flip')).toHaveCount(0, { timeout: 10_000 })
+  // Start the intro and wait for the arrival flips to settle so we read
+  // settled faces.
+  await start(page)
+  await settle(page)
   const firstRow = page.locator('.board-row').first()
   const before = await firstRow.textContent()
 

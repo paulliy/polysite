@@ -237,6 +237,14 @@ describe('board store', () => {
     board.loading = false
     const [frame] = paginateMarkdown('same text', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
+    // Flips clear as their cells finish (BoardCell calls completeFlip); the map
+    // is merged, not replaced, so a later no-op commit can't cancel live flips.
+    for (const key of [...board.flips.keys()]) {
+      const [row, col] = key.split(':').map(Number)
+      board.completeFlip(row!, col!)
+    }
+    expect(board.flips.size).toBe(0)
+    // Re-committing the identical frame records no new flips.
     board.setPage([frame!])
     expect(board.flips.size).toBe(0)
   })

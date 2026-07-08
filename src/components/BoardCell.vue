@@ -26,6 +26,9 @@ const router = useRouter()
 /** The in-flight targeted flip for this cell, if any. */
 const flip = computed(() => board.flips.get(`${props.row}:${props.col}`))
 
+/** If this cell is part of the centered loading prompt, the face it holds. */
+const messageFace = computed(() => board.loadingMessage.get(`${props.row}:${props.col}`))
+
 /**
  * `.flip` (the 3D animator) is mounted through the loading intro and during a
  * targeted flip, but NOT for idle cells. Every hop is driven purely
@@ -69,13 +72,13 @@ function stop() {
 }
 
 function faceClasses(cell: BoardCellState) {
-  return { 'face--link': cell.href !== null, 'face--heading': cell.heading }
+  return { 'face--link': cell.link, 'face--heading': cell.heading }
 }
 
 /** Only the real endpoint faces carry paint; intermediate flaps are plain. */
 function faceClassName(base: string, cell: BoardCellState, painted: boolean): string {
   let className = base
-  if (painted && cell.href !== null) className += ' face--link'
+  if (painted && cell.link) className += ' face--link'
   if (painted && cell.heading) className += ' face--heading'
   return className
 }
@@ -142,6 +145,23 @@ function startNoise() {
     front.className = 'face face--front'
     // Spread first hops across a gap so they don't fire on one frame.
     timer = setTimeout(() => noiseHop(g), rand() * noiseGap())
+  })
+}
+
+/** A loading-prompt cell rests on its assigned face (static) amid the noise so
+ *  the message stays legible; it flips to real content on the reveal (settle).
+ *  Painted with the link/CTA treatment (navy behind off-white) so the whole
+ *  strip reads as a "click to start" button. */
+function showLoadingMessage() {
+  const g = ++gen
+  waiting.value = false
+  showFlip.value = true
+  void nextTick(() => {
+    if (g !== gen) return
+    const front = frontEl.value
+    if (!front) return
+    front.textContent = messageFace.value ?? ''
+    front.className = 'face face--front face--link'
   })
 }
 
@@ -220,7 +240,10 @@ function startFlip(g: number) {
 }
 
 onMounted(() => {
-  if (board.loading && !board.reducedMotion) startNoise()
+  if (board.loading && !board.reducedMotion) {
+    if (messageFace.value !== undefined) showLoadingMessage()
+    else startNoise()
+  }
 })
 
 // Intro reveal: noise → settled content on the ripple wave (skipped when the
@@ -269,6 +292,8 @@ onBeforeUnmount(() => {
 })
 
 function follow() {
+  // During the loading intro a click just starts the reveal — never navigates.
+  if (board.loading) return
   const href = props.cell.href
   if (!href) return
   if (href.startsWith('/')) {
@@ -281,7 +306,7 @@ function follow() {
 </script>
 
 <template>
-  <span class="cell" :data-href="cell.href ?? undefined" @click="follow">
+  <span class="cell" :data-href="cell.href ?? undefined" :data-col="col" @click="follow">
     <span v-if="showFlip" ref="flipEl" class="flip">
       <span ref="frontEl" class="face face--front"></span>
       <span ref="backEl" class="face face--back"></span>
