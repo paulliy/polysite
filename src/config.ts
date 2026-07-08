@@ -7,9 +7,21 @@
 import type { RippleCurve } from '@/engine/ripple'
 export type { RippleCurve }
 
-/** Character grid dimensions (desktop). */
-export const GRID_COLS = 44
-export const GRID_ROWS = 22
+/**
+ * Character grid dimensions (desktop). The board fills the viewport, so more
+ * cells = smaller cells = smaller text and more content per frame (and, later,
+ * more resolution for pixelated images). Tune these to trade text size against
+ * density.
+ */
+export const GRID_COLS = 56
+export const GRID_ROWS = 28
+
+/**
+ * Glyph size as a multiple of cell width. Independent of grid density: lower
+ * this to give each character more breathing room in its cell, raise it for a
+ * chunkier, more display-like look.
+ */
+export const CELL_FONT_RATIO = 1.4
 
 /** Rows at the top of the board permanently reserved for the nav bar. */
 export const NAV_ROWS = 2
@@ -38,8 +50,8 @@ export const FLIP_HOP_MS = 120
  */
 export const FLIP_INTERMEDIATE_TOP_MIN = 0
 export const FLIP_INTERMEDIATE_TOP_MAX = 1
-export const FLIP_INTERMEDIATE_BOTTOM_MIN = 3
-export const FLIP_INTERMEDIATE_BOTTOM_MAX = 5
+export const FLIP_INTERMEDIATE_BOTTOM_MIN = 2
+export const FLIP_INTERMEDIATE_BOTTOM_MAX = 3
 
 /**
  * Ripple timing for multi-cell changes (CLAUDE.md #3): a full top-to-bottom
@@ -50,27 +62,43 @@ export const FLIP_INTERMEDIATE_BOTTOM_MAX = 5
  * 'ease-out' starts fast and settles, 'ease-in-out' does both. See
  * engine/ripple.ts for the curve math.
  */
-export const RIPPLE_DURATION_MS = 700
+export const RIPPLE_DURATION_MS = 1100
 export const RIPPLE_CURVE: RippleCurve = 'ease-out'
 
 /**
  * Minimum time the random-noise loading state runs, even if content is ready
  * sooner: Promise.all([minDurationTimer, contentReadyPromise]).
  */
-export const LOADING_MIN_DURATION_MS = 4500
+export const LOADING_MIN_DURATION_MS = 1000
 
 /**
  * Pre-content loading noise (CLAUDE.md #9): every cell flips on its own random
  * cadence — one hop, a random gap, repeat — so the board reads as organic,
- * unsynchronized texture rather than a wave. When the intro completes each
- * cell settles into its real face on the top-to-bottom ripple. Code constants,
- * no visitor-facing control.
+ * unsynchronized texture rather than a wave. Between hops a cell shows a
+ * static random glyph (its `.flip` is unmounted), so the board is always full
+ * but only a bounded number of cells animate at once. Code constants, no
+ * visitor-facing control.
  */
 export const LOADING_HOP_MS = 110
-export const LOADING_GAP_MIN_MS = 80
-export const LOADING_GAP_MAX_MS = 540
-/** Max random delay before a cell's first hop, so cells don't start in unison. */
-export const LOADING_START_STAGGER_MS = 900
+/** Floor for the gap between one cell's hops, before jitter. */
+export const LOADING_GAP_MIN_MS = 90
+/**
+ * Target number of cells mid-flip at any instant. Each cell's gap is derived
+ * from this and the total cell count, so the noise costs about the same
+ * whether the grid is 44x22 or 56x28 — it scales instead of animating every
+ * cell at once (which spikes the main thread on dense grids).
+ */
+export const LOADING_MAX_CONCURRENT = 220
+/** Random +/- fraction on each computed gap so cells stay desynchronized. */
+export const LOADING_GAP_JITTER = 0.6
+
+/**
+ * The reveal waits for audio to be unlocked (the visitor's first gesture) so
+ * its clack cascade is actually heard — but no longer than this, after which
+ * it reveals anyway (silently). Guarantees the board never hangs on the noise
+ * for a visitor who doesn't interact.
+ */
+export const LOADING_REVEAL_MAX_WAIT_MS = 8000
 
 /** Image pixelation granularity: character cells per image "pixel". */
 export const IMAGE_BLOCK_SIZE = 1

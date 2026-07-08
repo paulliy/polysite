@@ -7,6 +7,8 @@ import { contentForPath } from '@/content/loader'
 import { paginateMarkdown } from '@/engine/paginate'
 import { useScrollPosition } from '@/composables/useScrollPosition'
 import { whenLoadingComplete } from '@/composables/useLoadingIntro'
+import { primeClack, whenAudioReady } from '@/audio/clack'
+import { LOADING_REVEAL_MAX_WAIT_MS } from '@/config'
 
 /**
  * The Board lives here, outside <RouterView>, so route changes only retarget
@@ -16,6 +18,10 @@ import { whenLoadingComplete } from '@/composables/useLoadingIntro'
 
 const board = useBoardStore()
 const route = useRoute()
+
+// Arm the audio unlock now so a gesture during the loading intro leaves the
+// context running in time for the reveal's clacks (browser autoplay policy).
+primeClack()
 
 // Content is bundled markdown, so the first frame is ready synchronously — but
 // the loading noise still runs for its full minimum duration before revealing
@@ -39,8 +45,14 @@ watch(
   { immediate: true },
 )
 
-whenLoadingComplete(contentReady).then(() => {
-  board.loading = false
+// Reveal once the noise has run its minimum, content is ready, AND audio is
+// unlocked (the first gesture) so the reveal's clack cascade is heard — or
+// after the max-wait fallback, whichever comes first.
+Promise.all([
+  whenLoadingComplete(contentReady),
+  whenAudioReady(LOADING_REVEAL_MAX_WAIT_MS),
+]).then(() => {
+  board.finishLoading()
 })
 
 useScrollPosition({ onStep: (delta) => board.advance(delta) })

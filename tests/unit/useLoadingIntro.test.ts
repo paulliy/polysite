@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { whenLoadingComplete } from '@/composables/useLoadingIntro'
 
-/** Resolve on the next microtask so pending .then callbacks run. */
-const flush = () => Promise.resolve()
-
 describe('whenLoadingComplete', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
@@ -27,16 +24,15 @@ describe('whenLoadingComplete', () => {
       releaseContent = r
     })
     let done = false
-    void whenLoadingComplete(content, 500).then(() => {
+    const settled = whenLoadingComplete(content, 500).then(() => {
       done = true
     })
 
     await vi.advanceTimersByTimeAsync(500)
-    await flush()
     expect(done).toBe(false) // timer done, content still pending
 
     releaseContent()
-    await flush()
+    await settled // resolves only once both have settled
     expect(done).toBe(true)
   })
 })

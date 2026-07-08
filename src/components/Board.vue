@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NAV_ROWS } from '@/config'
+import { CELL_FONT_RATIO, NAV_ROWS } from '@/config'
 import { useBoardStore } from '@/stores/board'
 import BoardCell from './BoardCell.vue'
 import NavBar from './NavBar.vue'
@@ -17,7 +17,7 @@ const board = useBoardStore()
   <div class="board-viewport">
     <div
       class="board"
-      :style="{ '--cols': board.cols, '--rows': board.rowCount }"
+      :style="{ '--cols': board.cols, '--rows': board.rowCount, '--cell-font-ratio': CELL_FONT_RATIO }"
       aria-hidden="true"
     >
       <NavBar />
@@ -56,7 +56,7 @@ const board = useBoardStore()
      without overflowing either axis and never repositions. */
   --cell-w: min(100vw / var(--cols), 100vh / var(--rows) / 2);
   --cell-h: calc(var(--cell-w) * 2);
-  --cell-font-size: calc(var(--cell-w) * 1.45);
+  --cell-font-size: calc(var(--cell-w) * var(--cell-font-ratio));
 }
 
 .board-row {

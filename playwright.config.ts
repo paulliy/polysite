@@ -49,12 +49,22 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // Let AudioContext run without a gesture so the reveal (gated on audio
+        // being ready) fires on its timer during tests instead of waiting out
+        // the max-wait fallback. Real browsers still enforce the gate.
+        launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
       },
     },
     {
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox'],
+        launchOptions: {
+          firefoxUserPrefs: {
+            'media.autoplay.default': 0,
+            'media.autoplay.blocking_policy': 0,
+          },
+        },
       },
     },
     {

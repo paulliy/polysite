@@ -8,8 +8,8 @@ import {
   DEFER_FLIP_MOUNT,
   LOADING_HOP_MS,
   LOADING_GAP_MIN_MS,
-  LOADING_GAP_MAX_MS,
-  LOADING_START_STAGGER_MS,
+  LOADING_MAX_CONCURRENT,
+  LOADING_GAP_JITTER,
   RIPPLE_DURATION_MS,
   RIPPLE_CURVE,
 } from '@/config'
@@ -25,23 +25,30 @@ const router = useRouter()
 const flip = computed(() => board.flips.get(`${props.row}:${props.col}`))
 
 /**
- * The heavy `.flip` subtree (the 3D animator) is mounted only while this cell
- * is actively animating — loading noise, the intro settle, or a targeted flip.
- * Idle cells render a single static face, keeping the ~968-cell resting board
- * cheap. All animation is driven imperatively via the Web Animations API on the
- * one stable `.flip` element: each hop swaps the two faces' text and restarts
- * the 180° rotation, rather than recreating DOM per hop.
+ * `.flip` (the 3D animator) is mounted through the loading intro and during a
+ * targeted flip, but NOT for idle cells. Every hop is driven purely
+ * imperatively — WAAPI + textContent, no per-hop Vue reactivity — so the
+ * loading noise doesn't churn the patcher across ~1500 cells. `will-change` is
+ * deliberately omitted (see CSS): idle mounted `.flip`s then hold no compositor
+ * layer, and only the bounded set of actively-animating cells is promoted.
+ *
+ * A generation counter invalidates async callbacks (nextTick / timer /
+ * onfinish) left over from a previous phase, so loading → reveal → targeted
+ * flips can't race.
  */
 const flipEl = ref<HTMLElement | null>(null)
 const frontEl = ref<HTMLElement | null>(null)
 const backEl = ref<HTMLElement | null>(null)
 
-const showFlip = ref(false)
-/** A targeted flip that hasn't reached its ripple turn yet: hold the OLD face. */
+// Start mounted iff the board is still in its loading intro (folds `.flip` into
+// the first render instead of a second patch), then unmount once settled.
+const showFlip = ref(board.loading)
+/** A targeted flip awaiting its ripple turn: hold the OLD face. */
 const waiting = ref(false)
 
 let animation: Animation | null = null
 let timer: ReturnType<typeof setTimeout> | undefined
+let gen = 0
 
 const rand = () => Math.random()
 
@@ -71,120 +78,134 @@ function faceClassName(base: string, cell: BoardCellState, painted: boolean): st
 }
 
 /** One 180° rotation of the `.flip` element. */
-function rotate(duration: number, delay = 0): Animation | null {
+function rotate(duration: number): Animation | null {
   const el = flipEl.value
   if (!el) return null
   return el.animate(
     [{ transform: 'rotateX(0deg)' }, { transform: 'rotateX(-180deg)' }],
-    { duration, easing: FLIP_EASING, delay, fill: 'forwards' },
+    { duration, easing: FLIP_EASING, fill: 'forwards' },
   )
 }
 
-// --- Loading noise: intermittent, unsynchronized per-cell flapping ---------
+// --- Loading noise: bounded-concurrency, unsynchronized flapping -----------
 
-function noiseHop() {
+/** Gap tuned so ~LOADING_MAX_CONCURRENT cells are mid-hop at once, any grid. */
+function noiseGap(): number {
+  const total = board.rowCount * board.cols
+  const base = Math.max(LOADING_GAP_MIN_MS, LOADING_HOP_MS * (total / LOADING_MAX_CONCURRENT - 1))
+  return base * (1 - LOADING_GAP_JITTER / 2 + rand() * LOADING_GAP_JITTER)
+}
+
+function noiseHop(g: number) {
+  if (g !== gen || !board.loading) return
   const front = frontEl.value
   const back = backEl.value
-  if (!front || !back) return
-  const next = randomLoadingFace(front.textContent ?? undefined)
+  if (!front || !back || !flipEl.value) return
+  const current = front.textContent || randomLoadingFace()
+  const next = randomLoadingFace(current)
   back.textContent = next
   back.className = 'face face--back'
   animation?.cancel()
   animation = rotate(LOADING_HOP_MS)
   if (!animation) return
   animation.onfinish = () => {
-    // Carry the landed face onto the front and snap the parent back to 0°
-    // (seamless — same glyph faces the viewer), then wait a random gap before
-    // the next hop so the board reads as organic texture, not a pulse.
+    if (g !== gen) return
+    // Carry the landed face onto the front and snap back to 0° (seamless),
+    // then wait a random gap — the cell rests on a static glyph between hops.
     front.textContent = next
-    front.className = 'face face--front'
     animation?.cancel()
-    if (!board.loading) return
-    timer = setTimeout(noiseHop, LOADING_GAP_MIN_MS + rand() * (LOADING_GAP_MAX_MS - LOADING_GAP_MIN_MS))
+    animation = null
+    if (board.loading) timer = setTimeout(() => noiseHop(g), noiseGap())
   }
 }
 
 function startNoise() {
-  stop()
+  const g = ++gen
   waiting.value = false
   showFlip.value = true
   void nextTick(() => {
+    if (g !== gen) return
     const front = frontEl.value
     if (!front) return
     front.textContent = randomLoadingFace()
     front.className = 'face face--front'
-    // Random initial stagger so cells don't begin in unison.
-    timer = setTimeout(noiseHop, rand() * LOADING_START_STAGGER_MS)
+    // Spread first hops across a gap so they don't fire on one frame.
+    timer = setTimeout(() => noiseHop(g), rand() * noiseGap())
   })
 }
 
-/** Intro complete: flip from the current noise face to the real face, on the
- *  top-to-bottom ripple, then drop to a static face. */
+/** Intro complete: at this cell's ripple turn, flip the resting noise glyph to
+ *  the real face, then unmount `.flip` and show the static settled face. */
 function settle() {
+  const g = ++gen
   clearTimer()
-  const front = frontEl.value
-  const back = backEl.value
-  if (!flipEl.value || !front || !back) {
-    showFlip.value = false
-    return
-  }
-  animation?.cancel() // snap to 0°: front holds the current noise face
+  animation?.cancel()
   animation = null
-  back.textContent = props.cell.face
-  back.className = faceClassName('face face--back', props.cell, true)
   const rowFraction = board.rowCount > 1 ? props.row / (board.rowCount - 1) : 0
-  animation = rotate(FLIP_HOP_MS, rippleDelayMs(rowFraction, RIPPLE_DURATION_MS, RIPPLE_CURVE))
-  if (!animation) {
-    showFlip.value = false
-    return
-  }
-  animation.onfinish = () => {
-    showFlip.value = false
-  }
+  timer = setTimeout(
+    () => {
+      if (g !== gen) return
+      const front = frontEl.value
+      const back = backEl.value
+      if (!flipEl.value || !front || !back) {
+        showFlip.value = false
+        return
+      }
+      back.textContent = props.cell.face
+      back.className = faceClassName('face face--back', props.cell, true)
+      animation?.cancel()
+      animation = rotate(FLIP_HOP_MS)
+      if (!animation) {
+        showFlip.value = false
+        return
+      }
+      animation.onfinish = () => {
+        if (g !== gen) return
+        animation?.cancel()
+        animation = null
+        showFlip.value = false // → static settled face
+      }
+    },
+    rippleDelayMs(rowFraction, RIPPLE_DURATION_MS, RIPPLE_CURVE),
+  )
 }
 
 // --- Targeted flip: post-load navigation / scroll --------------------------
 
-function startFlip() {
+function startFlip(g: number) {
   const f = flip.value
-  const front = frontEl.value
-  const back = backEl.value
-  if (!f || !flipEl.value || !front || !back) return
-
+  if (!f) return
   const faces = f.faces
   const lastHop = faces.length - 2
-  let hop = 0
-
-  const runHop = () => {
-    front.textContent = faces[hop] ?? props.cell.face
-    front.className = faceClassName('face face--front', f.from, hop === 0)
-    animation?.cancel()
-
-    back.textContent = faces[hop + 1] ?? props.cell.face
-    back.className = faceClassName('face face--back', props.cell, hop === lastHop)
-
-    // With DEFER_FLIP_MOUNT the arm timer already consumed the ripple delay,
-    // so every hop runs immediately; otherwise the first hop carries it.
-    const delay = hop === 0 && !DEFER_FLIP_MOUNT ? f.delayMs : 0
-    animation = rotate(FLIP_HOP_MS, delay)
-    if (!animation) return
-    animation.onfinish = () => {
-      if (hop < lastHop) {
-        hop++
-        runHop()
-      } else {
-        board.completeFlip(props.row, props.col)
+  showFlip.value = true
+  void nextTick(() => {
+    if (g !== gen) return
+    const front = frontEl.value
+    const back = backEl.value
+    if (!flipEl.value || !front || !back) return
+    let step = 0
+    const runHop = () => {
+      if (g !== gen) return
+      front.textContent = faces[step] ?? props.cell.face
+      front.className = faceClassName('face face--front', f.from, step === 0)
+      animation?.cancel()
+      back.textContent = faces[step + 1] ?? props.cell.face
+      back.className = faceClassName('face face--back', props.cell, step === lastHop)
+      animation = rotate(FLIP_HOP_MS)
+      if (!animation) return
+      animation.onfinish = () => {
+        if (g !== gen) return
+        if (step < lastHop) {
+          step++
+          runHop()
+        } else {
+          showFlip.value = false
+          board.completeFlip(props.row, props.col)
+        }
       }
     }
-  }
-
-  runHop()
-}
-
-function armFlip() {
-  waiting.value = false
-  showFlip.value = true
-  void nextTick(startFlip)
+    runHop()
+  })
 }
 
 onMounted(() => {
@@ -199,12 +220,15 @@ watch(
   },
 )
 
-// Targeted flips (suppressed by the store while loading, so this is inert then).
+// Targeted flips (suppressed by the store while loading, so inert then).
 watch(
   () => flip.value?.serial,
   (serial) => {
     if (board.loading) return
-    stop()
+    const g = ++gen
+    clearTimer()
+    animation?.cancel()
+    animation = null
     if (serial === undefined) {
       showFlip.value = false
       waiting.value = false
@@ -215,15 +239,22 @@ watch(
       // Hold the old face until this cell's ripple turn, then flip.
       waiting.value = true
       showFlip.value = false
-      timer = setTimeout(armFlip, delay)
+      timer = setTimeout(() => {
+        if (g !== gen) return
+        waiting.value = false
+        startFlip(g)
+      }, delay)
     } else {
-      armFlip()
+      startFlip(g)
     }
   },
   { immediate: true },
 )
 
-onBeforeUnmount(stop)
+onBeforeUnmount(() => {
+  gen++
+  stop()
+})
 
 function follow() {
   const href = props.cell.href
@@ -243,8 +274,7 @@ function follow() {
       <span ref="frontEl" class="face face--front"></span>
       <span ref="backEl" class="face face--back"></span>
     </span>
-    <!-- Targeted flip waiting for its ripple turn: hold the OLD face so the
-         target isn't revealed early (the cell's own `face` is already it). -->
+    <!-- Targeted flip awaiting its ripple turn: hold the OLD face. -->
     <span
       v-else-if="waiting && flip"
       class="face"
@@ -265,7 +295,7 @@ function follow() {
   perspective: calc(var(--cell-h) * 6);
   user-select: none;
   /* Fixed-size, self-contained cell: scope style/layout/paint recalc so a
-     flip (subtree swap + 3D transform) can't invalidate the other ~968 cells. */
+     flip (subtree swap + 3D transform) can't invalidate the other cells. */
   contain: strict;
 }
 
@@ -294,14 +324,13 @@ function follow() {
 }
 
 /* One 180° hop per flap, driven per hop by the Web Animations API (see the
-   component script) — a flip chains a few hops through random faces. */
+   component script). No `will-change`: WAAPI auto-composites the actively
+   animating cells, while idle mounted `.flip`s (e.g. every cell during the
+   loading intro) hold no permanent layer — key to scaling to a dense grid. */
 .flip {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  /* Only actively-flipping cells mount `.flip`, so this compositor hint never
-     applies to the idle board — only to cells currently animating. */
-  will-change: transform;
 }
 
 .flip .face {

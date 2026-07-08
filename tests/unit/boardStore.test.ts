@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useBoardStore } from '@/stores/board'
 import { paginateMarkdown } from '@/engine/paginate'
@@ -9,11 +9,17 @@ import {
   NAV_ROWS,
   RIPPLE_DURATION_MS,
   RIPPLE_CURVE,
+  FLIP_HOP_MS,
   FLIP_INTERMEDIATE_TOP_MAX,
   FLIP_INTERMEDIATE_BOTTOM_MIN,
 } from '@/config'
 import { BLANK } from '@/engine/characterSet'
 import { rippleDelayMs } from '@/engine/ripple'
+import { scheduleClacks } from '@/audio/clack'
+
+// The synthesized clack needs WebAudio (absent in jsdom); mock it so we can
+// assert the store's *scheduling* without a real AudioContext.
+vi.mock('@/audio/clack', () => ({ scheduleClacks: vi.fn() }))
 
 const CONTENT_ROWS = GRID_ROWS - NAV_ROWS - FOOTER_ROWS
 const rowFraction = (globalRow: number) => globalRow / (GRID_ROWS - 1)
@@ -21,6 +27,7 @@ const rowFraction = (globalRow: number) => globalRow / (GRID_ROWS - 1)
 describe('board store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.mocked(scheduleClacks).mockClear()
   })
 
   it('starts with a fully blank content region of the configured size', () => {
@@ -137,8 +144,46 @@ describe('board store', () => {
     expect(board.rowCount).toBe(GRID_ROWS)
   })
 
+  it('reveals content and schedules the reveal clack cascade on finishLoading', () => {
+    const board = useBoardStore()
+    expect(board.loading).toBe(true)
+    const [frame] = paginateMarkdown('hello', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([frame!]) // silent while loading
+    expect(vi.mocked(scheduleClacks)).not.toHaveBeenCalled()
+
+    board.finishLoading()
+
+    expect(board.loading).toBe(false)
+    expect(vi.mocked(scheduleClacks)).toHaveBeenCalledTimes(1)
+    const impacts = vi.mocked(scheduleClacks).mock.calls[0]![0]
+    // Every cell reveals: one impact per cell, each at its ripple delay + a hop.
+    expect(impacts).toHaveLength(GRID_ROWS * GRID_COLS)
+    expect(Math.min(...impacts)).toBe(FLIP_HOP_MS) // top row: 0 delay + one hop
+    expect(Math.max(...impacts)).toBe(RIPPLE_DURATION_MS + FLIP_HOP_MS) // bottom row
+  })
+
+  it('finishLoading is a no-op once the intro has already completed', () => {
+    const board = useBoardStore()
+    board.finishLoading()
+    expect(vi.mocked(scheduleClacks)).toHaveBeenCalledTimes(1)
+    board.finishLoading()
+    expect(vi.mocked(scheduleClacks)).toHaveBeenCalledTimes(1) // not re-triggered
+  })
+
+  it('applies content but records no flips while loading (noise covers the reveal)', () => {
+    const board = useBoardStore()
+    expect(board.loading).toBe(true) // default until the intro completes
+    const [frame] = paginateMarkdown('hello', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([frame!])
+    // The real content is applied to the cells...
+    expect(board.contentRows[0]!.map((c) => c.face).join('').trimEnd()).toBe('hello')
+    // ...but nothing flips — BoardCell animates its own noise until the reveal.
+    expect(board.flips.size).toBe(0)
+  })
+
   it('records flips only for cells whose face changes', () => {
     const board = useBoardStore()
+    board.loading = false
     const [frame] = paginateMarkdown('ab', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
 
@@ -152,6 +197,7 @@ describe('board store', () => {
 
   it('flips cells whose paint changes even when the character does not', () => {
     const board = useBoardStore()
+    board.loading = false
     const [linked] = paginateMarkdown('[b c](/x)', { cols: GRID_COLS, rows: CONTENT_ROWS })
     const [plain] = paginateMarkdown('b c', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([linked!])
@@ -165,6 +211,7 @@ describe('board store', () => {
 
   it('draws fewer intermediate flaps near the top than near the bottom', () => {
     const board = useBoardStore()
+    board.loading = false
     // A full page of words so every content row flips from blank.
     board.setPage(paginateMarkdown('word '.repeat(3000), { cols: GRID_COLS, rows: CONTENT_ROWS }))
 
@@ -187,6 +234,7 @@ describe('board store', () => {
 
   it('does not flip anything when the target equals the current board', () => {
     const board = useBoardStore()
+    board.loading = false
     const [frame] = paginateMarkdown('same text', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
     board.setPage([frame!])
@@ -195,6 +243,7 @@ describe('board store', () => {
 
   it('gives every flip a face sequence from old face to target that the cell renders', () => {
     const board = useBoardStore()
+    board.loading = false
     const [frame] = paginateMarkdown('Hi 42', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
     expect(board.flips.size).toBeGreaterThan(0)
@@ -210,6 +259,7 @@ describe('board store', () => {
 
   it('staggers flip delays by global row for the top-to-bottom ripple', () => {
     const board = useBoardStore()
+    board.loading = false
     const frames = paginateMarkdown('one\n\ntwo\n\nthree', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage(frames)
     for (const [key, flip] of board.flips) {
@@ -220,6 +270,7 @@ describe('board store', () => {
 
   it('clears a flip once the cell reports the animation finished', () => {
     const board = useBoardStore()
+    board.loading = false
     const [frame] = paginateMarkdown('x', { cols: GRID_COLS, rows: CONTENT_ROWS })
     board.setPage([frame!])
     expect(board.flips.has(`${NAV_ROWS}:0`)).toBe(true)
@@ -229,6 +280,7 @@ describe('board store', () => {
 
   it('flips the footer arrows along with a scroll step', () => {
     const board = useBoardStore()
+    board.loading = false
     const words = Array.from({ length: 900 }, (_, i) => `word${i}`).join(' ')
     board.setPage(paginateMarkdown(words, { cols: GRID_COLS, rows: CONTENT_ROWS }))
     board.advance(1)

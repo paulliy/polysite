@@ -79,6 +79,46 @@ function ensureContext(): AudioContext | null {
   return ctx
 }
 
+/**
+ * Arm the audio context and its user-gesture unlock listener eagerly, at app
+ * startup — so a visitor who interacts *during* the loading intro has a running
+ * context by the time the reveal fires, and hears its clack cascade. Without
+ * this the context would only be created at the first scheduleClacks() call
+ * (the reveal itself), too late for that gesture to have unlocked it.
+ */
+export function primeClack(): void {
+  ensureContext()
+}
+
+/**
+ * Resolve once audio can actually play — i.e. the context is `running`, which
+ * (per browser autoplay policy) only happens after the visitor's first
+ * gesture — or after `maxWaitMs` as a fallback so the caller never blocks
+ * forever. The loading intro awaits this before revealing, so the reveal's
+ * clack cascade is heard rather than silently dropped on a suspended context.
+ * Resolves immediately when sound is off or WebAudio is unavailable, so it
+ * never delays the reveal in those cases.
+ */
+export function whenAudioReady(maxWaitMs: number): Promise<void> {
+  const context = ensureContext()
+  if (!context || context.state === 'running') return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      clearTimeout(timeout)
+      context.removeEventListener('statechange', onChange)
+      resolve()
+    }
+    const onChange = () => {
+      if (context.state === 'running') finish()
+    }
+    context.addEventListener('statechange', onChange)
+    const timeout = setTimeout(finish, maxWaitMs)
+  })
+}
+
 function rand(): number {
   return Math.random()
 }
