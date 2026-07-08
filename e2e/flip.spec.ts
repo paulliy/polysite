@@ -12,10 +12,14 @@ test('navigation flips changed cells while unchanged nav cells hold still', asyn
 
   // Changed cells animate…
   await expect(page.locator('.flip').first()).toBeVisible()
-  // …but the nav title cell ("P" of POLYSITE) keeps its face and must not.
-  const titleCell = page.locator('.nav .cell').first()
-  await expect(titleCell.locator('.flip')).toHaveCount(0)
-  await expect(titleCell).toHaveText('P')
+  // …but the nav menu is identical across this navigation, so no nav cell flips.
+  await expect(page.locator('.nav .flip')).toHaveCount(0)
+  // On the desktop layout the "POLYSITE" title is shown and holds its face; the
+  // narrow mobile grid drops the title (first nav cell is blank), so guard it.
+  const isMobile = (page.viewportSize()?.width ?? 0) < 700
+  if (!isMobile) {
+    await expect(page.locator('.nav .cell').first()).toHaveText('P')
+  }
 
   // Everything settles back to plain faces.
   await settle(page)

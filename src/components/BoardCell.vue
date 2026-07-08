@@ -103,10 +103,14 @@ function rotate(duration: number): Animation | null {
 
 // --- Loading noise: bounded-concurrency, unsynchronized flapping -----------
 
-/** Gap tuned so ~LOADING_MAX_CONCURRENT cells are mid-hop at once, any grid. */
+/** Gap tuned so ~LOADING_MAX_CONCURRENT cells are mid-hop at once, any grid.
+ *  The concurrency target scales down on weaker device tiers (fewer cells
+ *  animating at once → a larger gap); hop/floor/jitter are untouched, so the
+ *  noise keeps its exact organic character, just throttled. */
 function noiseGap(): number {
   const total = board.rowCount * board.cols
-  const base = Math.max(LOADING_GAP_MIN_MS, LOADING_HOP_MS * (total / LOADING_MAX_CONCURRENT - 1))
+  const concurrency = LOADING_MAX_CONCURRENT * board.timingScale.loadingConcurrency
+  const base = Math.max(LOADING_GAP_MIN_MS, LOADING_HOP_MS * (total / concurrency - 1))
   return base * (1 - LOADING_GAP_JITTER / 2 + rand() * LOADING_GAP_JITTER)
 }
 
@@ -197,7 +201,8 @@ function settle() {
         showFlip.value = false // → static settled face
       }
     },
-    rippleDelayMs(rowFraction, RIPPLE_DURATION_MS, RIPPLE_CURVE),
+    // Same tier-scaled sweep the store uses for the reveal clack schedule.
+    rippleDelayMs(rowFraction, RIPPLE_DURATION_MS * board.timingScale.rippleDuration, RIPPLE_CURVE),
   )
 }
 

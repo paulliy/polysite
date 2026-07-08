@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { settle, start } from './helpers'
+import { settle, start, forceDeviceClass } from './helpers'
 
 declare global {
   interface Window {
@@ -26,6 +26,25 @@ test('nav links route to real URLs without remounting the board', async ({ page 
   // CLAUDE.md #4: same DOM node — the route change must not remount the board.
   const sameNode = await page.evaluate(() => window.__board === document.querySelector('.board'))
   expect(sameNode).toBe(true)
+})
+
+test('navigation still lands correct content on a low device tier', async ({ page }) => {
+  // The low tier scales the ripple sweep and hop counts; the flip must still
+  // resolve to the correct final faces (a stuck/broken ripple would fail the
+  // generous settle bound or the content assertion).
+  await forceDeviceClass(page, 'low')
+  await page.goto('/')
+  await expect(page.locator('.board')).toBeVisible()
+  await start(page)
+  await settle(page)
+
+  await page.locator('[data-href="/projects"]').first().click()
+  await expect(page).toHaveURL(/\/projects$/)
+  await expect(page.locator('[data-href="/projects/split-flap-engine"]').first()).toBeVisible()
+
+  // Generous upper bound (not exact-ms): catches a ripple that never completes
+  // without being flaky about the scaled timing.
+  await settle(page, 15_000)
 })
 
 test('article URLs are directly bookmarkable', async ({ page }) => {

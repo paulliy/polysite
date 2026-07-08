@@ -19,6 +19,7 @@ import { BLANK, normalizeChar, randomSpinFace } from '@/engine/characterSet'
 import { loadingMessageCells } from '@/engine/loadingMessage'
 import { diffGrids } from '@/engine/cellDiff'
 import { rippleDelayMs } from '@/engine/ripple'
+import { timingScaleFor, type DeviceClass } from '@/engine/deviceClass'
 import { scheduleClacks } from '@/audio/clack'
 import type { Frame, Line } from '@/engine/types'
 
@@ -53,11 +54,13 @@ export interface CellFlip {
  * bottom row) gets: the [min, max] draw range is interpolated between the
  * TOP and BOTTOM config endpoints, so deeper rows flap through more.
  */
-function intermediateCount(rowFraction: number): number {
+function intermediateCount(rowFraction: number, hopScale = 1): number {
   const lerp = (a: number, b: number) => a + (b - a) * rowFraction
   const min = Math.round(lerp(FLIP_INTERMEDIATE_TOP_MIN, FLIP_INTERMEDIATE_BOTTOM_MIN))
-  const max = Math.round(lerp(FLIP_INTERMEDIATE_TOP_MAX, FLIP_INTERMEDIATE_BOTTOM_MAX))
-  const hi = Math.max(min, max)
+  // Scale only the ceiling by the device tier, then floor at `min` so a low
+  // tier draws fewer flaps without ever going below the top-tier floor.
+  const scaledMax = Math.round(lerp(FLIP_INTERMEDIATE_TOP_MAX, FLIP_INTERMEDIATE_BOTTOM_MAX) * hopScale)
+  const hi = Math.max(min, scaledMax)
   return min + Math.floor(Math.random() * (hi - min + 1))
 }
 
@@ -67,8 +70,8 @@ function intermediateCount(rowFraction: number): number {
  * This is the single source of truth for the sequence — BoardCell renders
  * it and the clack track times off it, so sound and animation stay locked.
  */
-function buildFaceSequence(from: string, to: string, rowFraction: number): string[] {
-  const spins = intermediateCount(rowFraction)
+function buildFaceSequence(from: string, to: string, rowFraction: number, hopScale = 1): string[] {
+  const spins = intermediateCount(rowFraction, hopScale)
   const sequence = [from]
   for (let i = 0; i < spins; i++) {
     const face = randomSpinFace(sequence[sequence.length - 1] ?? from, to)
@@ -173,6 +176,14 @@ export const useBoardStore = defineStore('board', () => {
   const reducedMotion = ref(false)
 
   /**
+   * The visitor's detected device tier (App sets it synchronously at startup,
+   * before the first cell mounts). Scales the board's animation work without
+   * changing its character; `full` reproduces the base constants exactly.
+   */
+  const deviceClass = ref<DeviceClass>('full')
+  const timingScale = computed(() => timingScaleFor(deviceClass.value))
+
+  /**
    * `${globalRow}:${col}` → face for the cells that spell the loading prompt
    * (centered in the noise). BoardCell holds these static through the intro.
    */
@@ -213,6 +224,10 @@ export const useBoardStore = defineStore('board', () => {
     ]
 
     const totalRows = NAV_ROWS + contentRowCount.value + FOOTER_ROWS
+    // Device tier scales the ripple's total sweep and each flip's hop count,
+    // read once per commit so every cell in this change stays consistent.
+    const scale = timingScale.value
+    const rippleDuration = RIPPLE_DURATION_MS * scale.rippleDuration
     const nextFlips = new Map<string, CellFlip>()
     for (const { live, target, offset } of regions) {
       const changes = diffGrids(cellKeysOf(live), cellKeysOf(target), 0)
@@ -236,8 +251,13 @@ export const useBoardStore = defineStore('board', () => {
           }
           nextFlips.set(`${globalRow}:${change.col}`, {
             from: fromCell,
-            faces: buildFaceSequence(fromCell.face, targetCell.face, spinFraction ?? rowFraction),
-            delayMs: rippleDelayMs(rowFraction, RIPPLE_DURATION_MS, RIPPLE_CURVE),
+            faces: buildFaceSequence(
+              fromCell.face,
+              targetCell.face,
+              spinFraction ?? rowFraction,
+              scale.intermediateHops,
+            ),
+            delayMs: rippleDelayMs(rowFraction, rippleDuration, RIPPLE_CURVE),
             serial: ++flipSerial,
           })
         }
@@ -288,11 +308,13 @@ export const useBoardStore = defineStore('board', () => {
     if (reducedMotion.value) return
 
     const totalRows = NAV_ROWS + contentRowCount.value + FOOTER_ROWS
+    // Reveal ripple uses the same tier-scaled sweep as BoardCell.settle.
+    const rippleDuration = RIPPLE_DURATION_MS * timingScale.value.rippleDuration
     const impactTimes: number[] = []
     for (let row = 0; row < totalRows; row++) {
       const rowFraction = totalRows > 1 ? row / (totalRows - 1) : 0
       // Matches BoardCell.settle: ripple delay, then one hop lands the flap.
-      const impact = rippleDelayMs(rowFraction, RIPPLE_DURATION_MS, RIPPLE_CURVE) + FLIP_HOP_MS
+      const impact = rippleDelayMs(rowFraction, rippleDuration, RIPPLE_CURVE) + FLIP_HOP_MS
       for (let col = 0; col < cols.value; col++) impactTimes.push(impact)
     }
     scheduleClacks(impactTimes)
@@ -357,6 +379,8 @@ export const useBoardStore = defineStore('board', () => {
     flips,
     loading,
     reducedMotion,
+    deviceClass,
+    timingScale,
     loadingMessage,
     setGrid,
     setNav,

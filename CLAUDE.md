@@ -17,7 +17,22 @@ scrolls, swipes, or navigates between pages.
 - Vue Router (real per-page URLs)
 - Pinia (setup-store style, not options-store)
 - VueUse for input/resize/reduced-motion composables
-- Plain CSS 3D transforms for the flip animation — no animation library
+- CSS 3D transforms driven via the Web Animations API (`el.animate()`) for the flip
+  animation — no animation library. WAAPI is used instead of stylesheet
+  transitions/`@keyframes` because each cell needs a variable-length chain of
+  random intermediate hops with a callback between hops; it's the same
+  compositor-only `transform` animation, just with JS-level sequencing control.
+- Device-class scaling (`engine/deviceClass.ts` + `composables/useDeviceClass.ts`):
+  a `full`/`medium`/`low` tier is detected once at startup and scales — never
+  changes the character of — the loading-noise concurrency and the ripple/flip
+  timing (`board.timingScale`, wired in `stores/board.ts` and `BoardCell.vue`).
+  `full` reproduces the base `config.ts` constants exactly. **`navigator.deviceMemory`
+  is Chromium/Android-only** (absent on Firefox and every iOS browser, since
+  Chrome-on-iOS is WebKit) — it must stay an *optional* signal in `classifyDevice`,
+  never a required one; `hardwareConcurrency` and `matchMedia('(pointer: coarse)')`
+  are the universal fallbacks. Playwright device emulation does **not** spoof these
+  capability signals, so tier coverage in e2e goes through `forceDeviceClass()`
+  (`e2e/helpers.ts`), not the mobile projects' device profiles.
 - Markdown content, parsed at build time
 - Vitest (unit) + Playwright (e2e)
 - Bun as package manager and script runner
@@ -142,7 +157,7 @@ without asking first.
 - Pinia: setup-store syntax (`defineStore('board', () => { ... })`), not the
   options-store syntax.
 - Keep `engine/` and `composables/` covered by Vitest; keep interaction/animation
-  behavior covered by Playwright rather than trying to unit-test CSS animations.
+  behavior covered by Playwright rather than trying to unit-test WAAPI animations.
 - When adding a new page/article: add a `.md` file under `content/`, and confirm
   `content/loader.ts` picks it up via `import.meta.glob` before wiring a route to it.
 

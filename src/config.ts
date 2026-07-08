@@ -124,6 +124,36 @@ export const LOADING_MESSAGE = 'CLICK TO START'
  */
 export const LOADING_REVEAL_MAX_WAIT_MS = 8000
 
+/**
+ * Device-class scaling (see engine/deviceClass.ts). The board detects a coarse
+ * capability tier once at startup and scales — without changing character — its
+ * heaviest animation work: the loading-noise concurrency and the ripple/flip
+ * timing. `full` reproduces the numbers above exactly; `medium`/`low` throttle.
+ * There is deliberately no visitor-facing control (CLAUDE.md rule 8) — this is a
+ * runtime heuristic in the same spirit as every other constant here.
+ *
+ * Thresholds are inclusive (`<=`). `navigator.deviceMemory` (the *_MEMORY_GB
+ * checks) is Chromium/Android-only — absent on Firefox and all iOS browsers —
+ * so classifyDevice treats it as optional and never requires it.
+ */
+export const DEVICE_CLASS_LOW_CORES = 4
+export const DEVICE_CLASS_MEDIUM_CORES = 6
+/** A fine-pointer (laptop/desktop) device this weak still drops to `medium`. */
+export const DEVICE_CLASS_LAPTOP_CORES = 4
+export const DEVICE_CLASS_LOW_MEMORY_GB = 3
+export const DEVICE_CLASS_MEDIUM_MEMORY_GB = 6
+
+/**
+ * Per-tier multipliers applied to LOADING_MAX_CONCURRENT (loadingConcurrency),
+ * RIPPLE_DURATION_MS (rippleDuration), and the intermediate-hop count
+ * (intermediateHops). `full` MUST be all 1.0 — it is the current behavior.
+ */
+export const DEVICE_TIMING_SCALE = {
+  full: { loadingConcurrency: 1.0, rippleDuration: 1.0, intermediateHops: 1.0 },
+  medium: { loadingConcurrency: 0.7, rippleDuration: 1.15, intermediateHops: 0.75 },
+  low: { loadingConcurrency: 0.4, rippleDuration: 1.35, intermediateHops: 0.5 },
+} as const
+
 /** Image pixelation granularity: character cells per image "pixel". */
 export const IMAGE_BLOCK_SIZE = 1
 

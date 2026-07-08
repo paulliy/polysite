@@ -9,6 +9,7 @@ import { imageLines, preloadContentImages } from '@/content/imageLoader'
 import { paginateMarkdown } from '@/engine/paginate'
 import { useScrollPosition } from '@/composables/useScrollPosition'
 import { useReducedMotion } from '@/composables/useReducedMotion'
+import { useDeviceClass } from '@/composables/useDeviceClass'
 import { useGridDimensions } from '@/composables/useGridDimensions'
 import { whenLoadingComplete } from '@/composables/useLoadingIntro'
 import { primeClack, whenAudioReady } from '@/audio/clack'
@@ -31,6 +32,11 @@ board.reducedMotion = reduced.value
 watch(reduced, (value) => {
   board.reducedMotion = value
 })
+
+// Detect the device tier once, synchronously, before the first cell mounts and
+// starts the loading noise — it scales animation work but never changes during
+// a session, so (unlike reduced motion) there's nothing to keep live.
+board.deviceClass = useDeviceClass()
 
 // Size the board to the viewport before the first paginate, and re-paginate
 // when it crosses the mobile breakpoint.

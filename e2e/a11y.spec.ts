@@ -18,7 +18,13 @@ test('the parallel DOM updates on navigation', async ({ page }) => {
   await expect(page.locator('.sr-only h1')).toContainText('Projects')
 })
 
-test('hidden nav links are keyboard-focusable and route', async ({ page }) => {
+test('hidden nav links are keyboard-focusable and route', async ({ page, browserName }) => {
+  // WebKit (desktop Safari + Mobile Safari) does not move Tab focus to links
+  // unless the OS "Full Keyboard Access" setting is on — which Playwright's
+  // WebKit build can't enable. The links are real, focusable <a> anchors (the
+  // parallel-DOM assertions above cover their presence); this Tab-order check is
+  // only meaningful on engines that Tab to links by default.
+  test.skip(browserName === 'webkit', 'WebKit needs Full Keyboard Access to Tab to links')
   await page.goto('/')
   // The board cells are aria-hidden and not focusable, so the first Tab lands
   // on the hidden nav's first real link.

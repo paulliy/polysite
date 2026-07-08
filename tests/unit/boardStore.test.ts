@@ -12,6 +12,7 @@ import {
   FLIP_HOP_MS,
   FLIP_INTERMEDIATE_TOP_MAX,
   FLIP_INTERMEDIATE_BOTTOM_MIN,
+  DEVICE_TIMING_SCALE,
 } from '@/config'
 import { BLANK } from '@/engine/characterSet'
 import { rippleDelayMs } from '@/engine/ripple'
@@ -274,6 +275,67 @@ describe('board store', () => {
       const row = Number(key.split(':')[0])
       expect(flip.delayMs).toBe(rippleDelayMs(rowFraction(row), RIPPLE_DURATION_MS, RIPPLE_CURVE))
     }
+  })
+
+  it('lengthens the ripple sweep on a lower device tier', () => {
+    const board = useBoardStore()
+    board.loading = false
+    const frames = paginateMarkdown('one\n\ntwo\n\nthree', { cols: GRID_COLS, rows: CONTENT_ROWS })
+
+    // Full tier reproduces the base duration exactly.
+    board.deviceClass = 'full'
+    board.setPage(frames)
+    const fullDelay = board.flips.get(`${NAV_ROWS}:0`)!.delayMs
+    expect(fullDelay).toBe(
+      rippleDelayMs(rowFraction(NAV_ROWS), RIPPLE_DURATION_MS, RIPPLE_CURVE),
+    )
+
+    // Low tier scales the sweep by DEVICE_TIMING_SCALE.low.rippleDuration (>1),
+    // so the same row's delay grows proportionally.
+    for (const key of [...board.flips.keys()]) {
+      const [r, c] = key.split(':').map(Number)
+      board.completeFlip(r!, c!)
+    }
+    board.deviceClass = 'low'
+    const [blank] = paginateMarkdown('', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([blank!]) // clear the board
+    board.setPage(frames) // re-flip in under the low tier
+    const scaled = RIPPLE_DURATION_MS * DEVICE_TIMING_SCALE.low.rippleDuration
+    const lowDelay = board.flips.get(`${NAV_ROWS}:0`)!.delayMs
+    expect(lowDelay).toBe(rippleDelayMs(rowFraction(NAV_ROWS), scaled, RIPPLE_CURVE))
+    expect(lowDelay).toBeGreaterThan(fullDelay)
+  })
+
+  it('draws fewer intermediate flaps on a lower device tier', () => {
+    const bottomRow = NAV_ROWS + CONTENT_ROWS - 1
+    const maxFacesAtBottom = (tier: 'full' | 'low') => {
+      setActivePinia(createPinia())
+      const board = useBoardStore()
+      board.loading = false
+      board.deviceClass = tier
+      board.setPage(paginateMarkdown('word '.repeat(3000), { cols: GRID_COLS, rows: CONTENT_ROWS }))
+      const lengths = [...board.flips]
+        .filter(([key]) => Number(key.split(':')[0]) === bottomRow)
+        .map(([, flip]) => flip.faces.length)
+      return Math.max(...lengths)
+    }
+
+    // The intermediate-hop ceiling is scaled by DEVICE_TIMING_SCALE.low.intermediateHops
+    // (<1), so the deepest row draws a shorter face sequence than at full tier.
+    expect(maxFacesAtBottom('low')).toBeLessThan(maxFacesAtBottom('full'))
+  })
+
+  it('scales the reveal cascade timing by device tier', () => {
+    const board = useBoardStore()
+    board.deviceClass = 'low'
+    const [frame] = paginateMarkdown('hello', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([frame!])
+    board.finishLoading()
+
+    const impacts = vi.mocked(scheduleClacks).mock.calls[0]![0]
+    const scaled = RIPPLE_DURATION_MS * DEVICE_TIMING_SCALE.low.rippleDuration
+    // Bottom row: full scaled sweep + one landing hop.
+    expect(Math.max(...impacts)).toBe(scaled + FLIP_HOP_MS)
   })
 
   it('clears a flip once the cell reports the animation finished', () => {

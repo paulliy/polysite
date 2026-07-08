@@ -74,19 +74,24 @@ export default defineConfig({
       },
     },
 
-    /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: {
-    //     ...devices['Pixel 5'],
-    //   },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: {
-    //     ...devices['iPhone 12'],
-    //   },
-    // },
+    /* Test against mobile viewports. These validate touch/viewport correctness;
+       device emulation does NOT spoof hardwareConcurrency/deviceMemory, so tier
+       coverage still comes from forceDeviceClass() (see e2e/helpers.ts). */
+    {
+      name: 'Mobile Chrome',
+      use: {
+        ...devices['Pixel 5'],
+        // Same autoplay override as desktop chromium so the audio-gated reveal
+        // fires on its timer in tests.
+        launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
+      },
+    },
+    {
+      name: 'Mobile Safari',
+      use: {
+        ...devices['iPhone 12'],
+      },
+    },
 
     /* Test against branded browsers. */
     // {
