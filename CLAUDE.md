@@ -64,9 +64,12 @@ dev server by hand before running e2e tests.
 
 ## Deployment
 
-Hosted on **Cloudflare Workers static assets** (assets-only Worker, free tier,
-`*.workers.dev` URL — no custom domain). Config is `wrangler.jsonc` at the repo
-root; its `assets.not_found_handling = "single-page-application"` is what makes
+Hosted on **Cloudflare Workers static assets** (assets-only Worker, free tier)
+at **https://poilygon.dev** (+ `www`, both wired as Workers custom domains —
+DNS/certs are managed by the Worker's `routes`, not manual DNS records; the
+`workers.dev` URL is explicitly disabled). The domain really is spelled
+`poilygon.dev`. Config is `wrangler.jsonc` at the repo root; its
+`assets.not_found_handling = "single-page-application"` is what makes
 history-mode deep links (`/about`, `/projects/:slug`) serve `index.html` — keep
 it. Deploys are CLI-only from a local machine (no git-connected builds):
 
