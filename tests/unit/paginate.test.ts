@@ -346,6 +346,39 @@ describe('paginateMarkdown — pagination', () => {
     expect(frame.lines[1]!.tiles?.[1]).toEqual(t)
     expect(frame.lines[1]!.tiles?.[2]).toBeNull()
   })
+
+  it('records a snake ring rect for a {border=snake} image', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##', '##'] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){width=4 align=left border=snake}', {
+      cols: 6,
+      rows: 6,
+      image,
+    })
+    // Ring is the full bordered footprint (4×4) at the left edge, frame row 0.
+    expect(frame.snakeRings).toEqual([{ row: 0, col: 0, width: 4, height: 4 }])
+  })
+
+  it('offsets the snake ring by preceding content and centering', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##', '##'] } : null)
+    const [frame] = paginateMarkdown('Hi\n\n![alt](/img.png){width=4 border=snake}', {
+      cols: 6,
+      rows: 8,
+      image,
+    })
+    // 'Hi' (row 0), blank separator (row 1), then the centered 4-wide ring at
+    // row 2, col 1 (pad = (6-4)/2).
+    expect(frame.snakeRings).toEqual([{ row: 2, col: 1, width: 4, height: 4 }])
+  })
+
+  it('does not record snake rings for a plain {border} image', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##', '##'] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){width=4 align=left border}', {
+      cols: 6,
+      rows: 6,
+      image,
+    })
+    expect(frame.snakeRings).toBeUndefined()
+  })
 })
 
 describe('paginateMarkdown — floated images (text wraps around)', () => {
@@ -523,6 +556,20 @@ describe('parseImageAttrs', () => {
   it('does not treat "border" inside another token as the flag', () => {
     expect(parseImageAttrs('align=border')).toEqual({ align: 'center' })
     expect(parseImageAttrs('borderline')).toEqual({ align: 'center' })
+  })
+
+  it('parses border=snake as a snake border (implying border)', () => {
+    expect(parseImageAttrs('border=snake')).toEqual({ align: 'center', border: true, snake: true })
+    expect(parseImageAttrs('width=8 align=left border=snake')).toEqual({
+      width: 8,
+      align: 'left',
+      border: true,
+      snake: true,
+    })
+  })
+
+  it('treats border with any other value as a plain ring (no snake)', () => {
+    expect(parseImageAttrs('border=plain')).toEqual({ align: 'center', border: true })
   })
 })
 

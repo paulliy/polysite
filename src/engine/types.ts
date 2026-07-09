@@ -90,9 +90,26 @@ export interface ImageRender {
   tiles?: (ImageTileRef | null)[][]
 }
 
+/** A rectangle of board cells (top-left inclusive; width/height count cells).
+ *  Used for border rings — see engine/border.ts's `borderRingPath`. */
+export interface BorderRect {
+  row: number
+  col: number
+  width: number
+  height: number
+}
+
 /** One full screen of content: exactly `rows` lines. */
 export interface Frame {
   lines: Line[]
+  /**
+   * Border rings authored with `{border=snake}`, in content-region coordinates
+   * (row 0 = first content row). Present only on frames that show such an image;
+   * the store offsets them to global rows and the border snake animates exactly
+   * these rings (composables/useSnakeGame.ts) — a plain `{border}` never appears
+   * here, so the snake is opt-in, not automatic on every border.
+   */
+  snakeRings?: BorderRect[]
 }
 
 /** A single cell that must flip, with its ripple delay. */

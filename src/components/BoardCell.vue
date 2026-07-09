@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useBoardStore, type BoardCellState } from '@/stores/board'
 import {
   FLIP_HOP_MS,
@@ -24,6 +24,7 @@ const props = defineProps<{ cell: BoardCellState; row: number; col: number }>()
 
 const board = useBoardStore()
 const router = useRouter()
+const route = useRoute()
 
 /** The in-flight targeted flip for this cell, if any. */
 const flip = computed(() => board.flips.get(`${props.row}:${props.col}`))
@@ -86,9 +87,6 @@ function faceClasses(cell: BoardCellState) {
     'face--heading': cell.heading,
     'face--bold': cell.bold,
     'face--italic': cell.italic,
-    // Tile cells bleed slightly past the cell edge (see CSS) so fractional cell
-    // sizing can't open a black seam between adjacent image slices.
-    'face--tile': cell.tile != null,
   }
 }
 
@@ -122,8 +120,6 @@ function applyTile(el: HTMLElement, tile: BoardCellState['tile']) {
     el.style.backgroundSize = ''
     el.style.backgroundPosition = ''
   }
-  // Bleed the tile slice past the cell edge (see .face--tile) to hide seams.
-  el.classList.toggle('face--tile', !!tile)
 }
 
 /** Only the real endpoint faces carry paint; intermediate flaps are plain. */
@@ -419,7 +415,14 @@ function follow() {
   const href = props.cell.href
   if (!href) return
   if (href.startsWith('/')) {
-    router.push(href)
+    // router.push() to the route already showing is a no-op (no navigation
+    // guard/watcher fires), so treat a click on the current page as a
+    // request to reload it instead of silently doing nothing.
+    if (href === route.path) {
+      board.requestReload()
+    } else {
+      router.push(href)
+    }
   } else {
     // mailto: and external links leave the board.
     window.open(href, href.startsWith('mailto:') ? '_self' : '_blank', 'noopener')
@@ -493,17 +496,6 @@ function follow() {
   /* Tile-slice image cells set background-image/-size/-position inline; this
      keeps a slice from tiling. Inert for ordinary cells (no background-image). */
   background-repeat: no-repeat;
-}
-
-/* Tile-slice image cell: bleed the face ~0.5px past every edge so neighbouring
-   slices overlap instead of leaving a black gap where fractional cell sizing
-   rounds a seam open. The cell's overflow:hidden + contain:strict clip the
-   bleed, so it never leaks onto adjacent cells or the board edge. */
-.face--tile {
-  position: absolute;
-  inset: -0.5px;
-  width: auto;
-  height: auto;
 }
 
 .face--heading {

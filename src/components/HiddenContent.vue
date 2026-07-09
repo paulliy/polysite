@@ -15,7 +15,7 @@ import type { InlineSegment, SemanticBlock } from '@/engine/types'
 const NAV_ITEMS = [
   { label: 'Home', href: '/' },
   { label: 'Projects', href: '/projects' },
-  { label: 'About', href: '/about' },
+  { label: 'Contact', href: '/contact' },
 ]
 
 const route = useRoute()

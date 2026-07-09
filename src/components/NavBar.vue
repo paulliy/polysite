@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { useBoardStore } from '@/stores/board'
 import BoardCell from './BoardCell.vue'
 import type { Line, LinkSpan } from '@/engine/types'
@@ -23,7 +24,7 @@ import type { Line, LinkSpan } from '@/engine/types'
 const NAV_ITEMS: Array<{ label: string; href: string }> = [
   { label: 'Home', href: '/' },
   { label: 'Projects', href: '/projects' },
-  { label: 'About', href: '/about' },
+  { label: 'Contact', href: '/contact' },
 ]
 
 const TITLE_PHRASES = [
@@ -59,6 +60,16 @@ function titleShownFor(cols: number): boolean {
   return NAV_MARGIN + TITLE_WIDTH + 1 + MENU_TEXT.length + NAV_MARGIN <= cols
 }
 
+/** The nav item, if any, whose page the route is currently on — matches
+ *  nested routes (`/projects/foo` under `/projects`) but not the root ('/')
+ *  against everything. */
+function activeHrefFor(path: string): string | null {
+  const item = NAV_ITEMS.find((i) =>
+    i.href === '/' ? path === '/' : path === i.href || path.startsWith(i.href + '/'),
+  )
+  return item?.href ?? null
+}
+
 /** href of the menu item currently under the pointer, if any (drives paint). */
 const hoveredHref = ref<string | null>(null)
 /** Column under the pointer while over the nav, else null (drives the caret). */
@@ -81,6 +92,7 @@ function buildNavLines(
   titleHovered: boolean,
   phrase: string,
   fillCols: number,
+  activeHref: string | null,
 ): Line[] {
   const menu = MENU_TEXT
   // Title left, menu right, both inset by NAV_MARGIN; drop the title if narrow.
@@ -123,10 +135,17 @@ function buildNavLines(
   }
 
   const span = menuLinks.find((l) => l.href === hovered)
+  const activeSpan = menuLinks.find((l) => l.href === activeHref)
 
   // Flank the hovered item with hyphens in the title row ("- Home -"), and the
-  // title itself the same way while it's hovered ("-POLYSITE-").
+  // title itself the same way while it's hovered ("-POLYSITE-"). The item for
+  // whatever page is currently showing gets the same hyphens permanently, as
+  // a "you are here" marker, independent of hover.
   const title = text.split('')
+  if (activeSpan) {
+    if (activeSpan.start - 1 >= 0) title[activeSpan.start - 1] = '-'
+    if (activeSpan.end < cols) title[activeSpan.end] = '-'
+  }
   if (span) {
     if (span.start - 1 >= 0) title[span.start - 1] = '-'
     if (span.end < cols) title[span.end] = '-'
@@ -155,14 +174,25 @@ function buildNavLines(
 }
 
 const board = useBoardStore()
+const route = useRoute()
 
 // Rebuild the nav on mount, when the column count changes (the board crossed
-// the mobile breakpoint), and whenever the hover/phrase/dwell state changes.
-// setNav diffs, so only the cells that actually change (the hovered item, the
-// caret, the loading-bar's advancing edge) flip.
+// the mobile breakpoint), when the route changes (the active-page hyphen),
+// and whenever the hover/phrase/dwell state changes. setNav diffs, so only
+// the cells that actually change (the hovered item, the caret, the
+// loading-bar's advancing edge, the active marker) flip.
 watch(
-  [() => board.cols, hoveredHref, hoveredCol, hoveredTitle, phraseIndex, dwellStep, dwellComplete],
-  ([cols]) => {
+  [
+    () => board.cols,
+    () => route.path,
+    hoveredHref,
+    hoveredCol,
+    hoveredTitle,
+    phraseIndex,
+    dwellStep,
+    dwellComplete,
+  ],
+  ([cols, path]) => {
     const phrase = TITLE_PHRASES[phraseIndex.value] ?? BASE_PHRASE
     const fillCols = dwellComplete.value ? phrase.length : dwellStep.value
     board.setNav(
@@ -173,6 +203,7 @@ watch(
         hoveredTitle.value,
         phrase,
         fillCols,
+        activeHrefFor(path as string),
       ),
     )
   },

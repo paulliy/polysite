@@ -238,3 +238,16 @@ export const CLACK_MAX_GAIN = 0.32
 
 /** Hard cap on simultaneous clack voices per transition (perf + avoids a wall of noise). */
 export const CLACK_MAX_VOICES = 48
+
+/**
+ * Browser tab title: "<page>@<TITLE_DOMAIN>", updated per route in App.vue.
+ * PAGE_TITLES maps each named route to its label; the dynamic `article` route
+ * isn't listed here — its label is derived from the slug instead.
+ */
+export const TITLE_DOMAIN = 'poilygon.dev'
+export const PAGE_TITLES: Record<string, string> = {
+  home: 'Home',
+  projects: 'Projects',
+  contact: 'Contact',
+  'not-found': '404',
+}

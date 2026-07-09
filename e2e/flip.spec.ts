@@ -12,8 +12,14 @@ test('navigation flips changed cells while unchanged nav cells hold still', asyn
 
   // Changed cells animate…
   await expect(page.locator('.flip').first()).toBeVisible()
-  // …but the nav menu is identical across this navigation, so no nav cell flips.
-  await expect(page.locator('.nav .flip')).toHaveCount(0)
+  // …the nav menu labels are identical across this navigation, but the
+  // "you are here" hyphen marker moves from Home to Projects — a handful of
+  // flank cells flip, not the whole row.
+  await expect(page.locator('.nav .flip').first()).toBeVisible()
+  const navFlipCount = await page.locator('.nav .flip').count()
+  const navCellCount = await page.locator('.nav .cell').count()
+  expect(navFlipCount).toBeGreaterThan(0)
+  expect(navFlipCount).toBeLessThan(navCellCount / 2)
   // On the desktop layout the "POLYSITE" title is shown and holds its face; the
   // narrow mobile grid drops the title (first nav cells blank), so guard it. The
   // row is inset one column (NAV_MARGIN), so the title starts at column 1.

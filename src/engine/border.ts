@@ -5,15 +5,15 @@
  * faces on the default palette — the border is board chrome, not image, so it
  * carries no color (CLAUDE.md rule 6).
  *
- * This module also owns the ring's *geometry*: `detectBorderRings` locates
- * drawn rings in a committed grid of faces (the box-drawing corners/edges are
- * distinctive and used nowhere else), and `borderRingPath` walks a ring's
+ * This module also owns the ring's *geometry*: `borderRingPath` walks a ring's
  * perimeter clockwise into an ordered cell list. That ordered walk is the track
  * the hover "snake" travels (engine/snake.ts + composables/useSnakeGame.ts) —
- * keeping ring glyphs, construction, detection, and traversal in one home.
+ * keeping ring glyphs, construction, and traversal in one home. The rings the
+ * snake animates come from the paginator (opt-in `{border=snake}`, threaded via
+ * `Frame.snakeRings`), not from scanning the board.
  */
 
-import type { ImageRender } from './types'
+import type { BorderRect, ImageRender } from './types'
 import { BORDER_GLYPHS } from './characterSet'
 
 /**
@@ -56,62 +56,10 @@ export function withBorder(render: ImageRender): ImageRender {
   }
 }
 
-/** A drawn border ring's outer rectangle, in the coordinate space of the grid
- *  it was found in (top-left inclusive; width/height count the ring itself). */
-export interface BorderRect {
-  row: number
-  col: number
-  width: number
-  height: number
-}
-
 /** A single ring cell, in the same coordinate space as the `BorderRect`. */
 export interface RingCell {
   row: number
   col: number
-}
-
-/**
- * Find every complete box-drawing ring in a grid of faces. A ring is anchored
- * by a `┌` whose top edge runs `─…─` to a `┐`, whose left edge runs `│…│` to a
- * `└`, closed by a matching `┘` — with the far edges verified so stray box
- * glyphs elsewhere can't form a false positive. Rings smaller than 3×3 (no
- * interior) are ignored. Coordinates are the grid's own; callers add any region
- * offset (e.g. nav rows) themselves.
- */
-export function detectBorderRings(grid: string[][]): BorderRect[] {
-  const { horizontal, vertical, topLeft, topRight, bottomLeft, bottomRight } = BORDER_GLYPHS
-  const rings: BorderRect[] = []
-  for (let r = 0; r < grid.length; r++) {
-    const row = grid[r]
-    if (!row) continue
-    for (let c = 0; c < row.length; c++) {
-      if (row[c] !== topLeft) continue
-      // Top edge: run right through horizontals to the top-right corner.
-      let right = c + 1
-      while (row[right] === horizontal) right++
-      if (row[right] !== topRight) continue
-      // Left edge: run down through verticals to the bottom-left corner.
-      let bottom = r + 1
-      while (grid[bottom]?.[c] === vertical) bottom++
-      if (grid[bottom]?.[c] !== bottomLeft) continue
-      if (grid[bottom]?.[right] !== bottomRight) continue
-      const width = right - c + 1
-      const height = bottom - r + 1
-      if (width < 3 || height < 3) continue
-      // Verify the far (bottom / right) edges so partial glyphs can't fake a ring.
-      let closed = true
-      for (let cc = c + 1; cc < right && closed; cc++) {
-        if (grid[bottom]?.[cc] !== horizontal) closed = false
-      }
-      for (let rr = r + 1; rr < bottom && closed; rr++) {
-        if (grid[rr]?.[right] !== vertical) closed = false
-      }
-      if (!closed) continue
-      rings.push({ row: r, col: c, width, height })
-    }
-  }
-  return rings
 }
 
 /**

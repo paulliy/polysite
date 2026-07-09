@@ -20,7 +20,7 @@ test('mobile viewport re-flows to the narrow grid', async ({ page }) => {
 })
 
 test('icon glyphs render as inline SVG on the board', async ({ page }) => {
-  await page.goto('/about')
+  await page.goto('/contact')
   await start(page)
   await settle(page, 15000)
   expect(await page.locator('.board .icon svg').count()).toBeGreaterThanOrEqual(3)

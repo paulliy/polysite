@@ -5,7 +5,7 @@ describe('content loader', () => {
   it('maps every content file to a clean route', () => {
     const routes = Object.keys(contentByRoute)
     expect(routes).toContain('/')
-    expect(routes).toContain('/about')
+    expect(routes).toContain('/contact')
     expect(routes).toContain('/projects')
     for (const route of routes) {
       expect(route).toMatch(/^\/[a-z0-9\-/]*$/)
@@ -18,8 +18,8 @@ describe('content loader', () => {
   })
 
   it('returns markdown for known paths, tolerating a trailing slash', () => {
-    expect(contentForPath('/about')).toBe(contentByRoute['/about'])
-    expect(contentForPath('/about/')).toBe(contentByRoute['/about'])
+    expect(contentForPath('/contact')).toBe(contentByRoute['/contact'])
+    expect(contentForPath('/contact/')).toBe(contentByRoute['/contact'])
     expect(contentForPath('/')).toBe(contentByRoute['/'])
   })
 

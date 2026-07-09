@@ -39,11 +39,14 @@ export function imageToTileRender(
 }
 
 /**
- * The CSS sprite-grid math for one tile: scale the image so the whole grid
- * spans `cols`×`rows` cells, then position it so this cell shows slice
- * (col, row). The browser resolves a background-position percentage as
- * (containerSize − imageSize) × pct/100, so `col/(cols-1)*100%` lands cell
- * `col` exactly. Division is guarded for a 1-wide / 1-tall grid.
+ * The CSS sprite-grid math for one tile. Rather than a percentage
+ * `background-size` (which the browser rasterizes independently per cell, so
+ * fractional cell sizes leave adjacent slices at mismatched scales — visible
+ * seams), the image is sized and positioned in **grid-absolute units** off the
+ * shared `--cell-w`/`--cell-h` custom properties: every cell scales the image
+ * to the exact same `cols×rows`-cell box and walks the position left/up by this
+ * cell's (col, row), so all slices reference one identical scaled image and
+ * line up to the sub-pixel.
  */
 export function tileBackgroundStyle(tile: ImageTileRef): {
   backgroundImage: string
@@ -51,11 +54,9 @@ export function tileBackgroundStyle(tile: ImageTileRef): {
   backgroundPosition: string
 } {
   const { src, col, row, cols, rows } = tile
-  const posX = cols > 1 ? (col / (cols - 1)) * 100 : 0
-  const posY = rows > 1 ? (row / (rows - 1)) * 100 : 0
   return {
     backgroundImage: `url("${src}")`,
-    backgroundSize: `${cols * 100}% ${rows * 100}%`,
-    backgroundPosition: `${posX}% ${posY}%`,
+    backgroundSize: `calc(var(--cell-w) * ${cols}) calc(var(--cell-h) * ${rows})`,
+    backgroundPosition: `calc(var(--cell-w) * ${-col}) calc(var(--cell-h) * ${-row})`,
   }
 }

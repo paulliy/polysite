@@ -21,7 +21,7 @@ import { diffGrids } from '@/engine/cellDiff'
 import { rippleDelayMs } from '@/engine/ripple'
 import { timingScaleFor, type DeviceClass } from '@/engine/deviceClass'
 import { scheduleClacks } from '@/audio/clack'
-import type { CellColor, Frame, ImageTileRef, Line } from '@/engine/types'
+import type { BorderRect, CellColor, Frame, ImageTileRef, Line } from '@/engine/types'
 
 /** One rendered flap cell: its current face plus link/heading treatment. */
 export interface BoardCellState {
@@ -171,6 +171,29 @@ export const useBoardStore = defineStore('board', () => {
   const frames = ref<Frame[]>([])
   const position = ref(0)
   const frameCount = computed(() => frames.value.length)
+
+  /**
+   * The visible frame's `{border=snake}` ring rectangles in *global* board
+   * coordinates (content-region rows shifted past the nav). Empty unless the
+   * current frame shows a snake-bordered image. The border snake animates
+   * exactly these (composables/useSnakeGame.ts) — plain `{border}` rings are
+   * never listed, so the snake stays an opt-in, authored border variant.
+   */
+  const snakeRings = computed<BorderRect[]>(() => {
+    const rings = frames.value[position.value]?.snakeRings
+    return rings ? rings.map((r) => ({ ...r, row: r.row + NAV_ROWS })) : []
+  })
+
+  /**
+   * Bumped when a link to the page already showing is clicked — router.push()
+   * to the current route is a no-op (the path doesn't change, so App.vue's
+   * route.path watcher never fires), so this is the signal App.vue watches to
+   * re-paginate and reset scroll back to frame 0, i.e. "reload".
+   */
+  const reloadToken = ref(0)
+  function requestReload() {
+    reloadToken.value++
+  }
 
   /** In-flight flips keyed by `${globalRow}:${col}`. */
   const flips = ref(new Map<string, CellFlip>())
@@ -439,6 +462,9 @@ export const useBoardStore = defineStore('board', () => {
     frames,
     position,
     frameCount,
+    snakeRings,
+    reloadToken,
+    requestReload,
     flips,
     overrides,
     setOverride,

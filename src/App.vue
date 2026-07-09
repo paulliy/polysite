@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { watch, watchEffect } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import Board from '@/components/Board.vue'
 import HiddenContent from '@/components/HiddenContent.vue'
@@ -13,7 +13,7 @@ import { useDeviceClass } from '@/composables/useDeviceClass'
 import { useGridDimensions } from '@/composables/useGridDimensions'
 import { whenLoadingComplete } from '@/composables/useLoadingIntro'
 import { primeClack, whenAudioReady } from '@/audio/clack'
-import { LOADING_REVEAL_MAX_WAIT_MS } from '@/config'
+import { LOADING_REVEAL_MAX_WAIT_MS, PAGE_TITLES, TITLE_DOMAIN } from '@/config'
 
 /**
  * The Board lives here, outside <RouterView>, so route changes only retarget
@@ -76,6 +76,14 @@ watch(
   { immediate: true },
 )
 
+// A link to the page already showing (e.g. clicking the active nav item)
+// doesn't change route.path, so it can't retrigger the watcher above —
+// board.requestReload() is the explicit signal for that case.
+watch(
+  () => board.reloadToken,
+  () => renderCurrentPage(),
+)
+
 // Re-flow the current page (and re-pixelate images) when the viewport crosses
 // the mobile breakpoint.
 watch(grid, (dimensions) => {
@@ -114,6 +122,19 @@ if (reduced.value) {
 }
 
 useScrollPosition({ onStep: (delta) => board.advance(delta) })
+
+// Tab title reflects the page being viewed, e.g. "Home@poilygon.dev".
+watchEffect(() => {
+  const name = route.name as string
+  const label =
+    name === 'article'
+      ? (route.params.slug as string)
+          .split('-')
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ')
+      : (PAGE_TITLES[name] ?? 'Home')
+  document.title = `${label}@${TITLE_DOMAIN}`
+})
 </script>
 
 <template>

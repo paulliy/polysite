@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 
 test('exposes the page as a real semantic parallel DOM', async ({ page }) => {
-  await page.goto('/about')
+  await page.goto('/contact')
   const hidden = page.locator('.sr-only')
   // A real heading and body text — findable by screen readers and Ctrl+F.
-  await expect(hidden.locator('h1')).toContainText('About')
+  await expect(hidden.locator('h1')).toContainText('Contact')
   await expect(hidden).toContainText('single fixed grid of split-flap characters')
   // Links are real anchors: mailto stays an <a>, internal routes are present.
   await expect(hidden.locator('a[href="mailto:paulfangli@gmail.com"]')).toHaveCount(1)
@@ -36,7 +36,7 @@ test('hidden nav links are keyboard-focusable and route', async ({ page, browser
   await page.keyboard.press('Tab')
   await expect(page).toHaveURL(/\/$/)
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/about$/)
+  await expect(page).toHaveURL(/\/contact$/)
 })
 
 test.describe('prefers-reduced-motion', () => {

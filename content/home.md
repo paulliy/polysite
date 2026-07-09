@@ -1,16 +1,15 @@
-# *Paul Li* {align=center}
 
-![A photo of me](/images/profile.jpg){width=20 align=left border}
+![A photo of me](/images/profile.jpg){width=20 align=left border=snake}
 
-Software, products, and the occasional mechanical interface. This whole
-site is one split-flap board: scroll to page through content, or use the
-links in the top row.
+Hi I'm Paul Li studying Electrical and Computer Engineering at WPI!
 
-Start with the [projects :arrow:](/projects), or read a little
-[about me](/about).
+Welcome to my website inspired by the oh so satisfiying half flap displays they would have at train stations. My hobby is creating open devices to show that privacy isn't the cost of innovation. 
 
-## Now
+What are you waiting for?  check out my [projects:arrow:](/projects)!
 
-Currently building tools and toys on the web. This site itself is a
-working demo - every character you see is a flap cell, and only cells
-that change ever flip.
+ 
+ 
+
+ 
+
+# *"The best investment you can make is an investment in yourself"* - [Warren Buffet](https://www.berkshirehathaway.com/letters/letters.html)

@@ -36,25 +36,19 @@ describe('tileBackgroundStyle', () => {
     ...over,
   })
 
-  it('sizes the background to span the whole grid', () => {
-    expect(tileBackgroundStyle(tile({})).backgroundSize).toBe('400% 200%')
+  it('sizes the background to the grid in cell units', () => {
+    expect(tileBackgroundStyle(tile({})).backgroundSize).toBe(
+      'calc(var(--cell-w) * 4) calc(var(--cell-h) * 2)',
+    )
   })
 
-  it('positions edge cells at 0% and 100%', () => {
-    expect(tileBackgroundStyle(tile({ col: 0, row: 0 })).backgroundPosition).toBe('0% 0%')
-    expect(tileBackgroundStyle(tile({ col: 3, row: 1 })).backgroundPosition).toBe('100% 100%')
-  })
-
-  it('spaces interior cells evenly', () => {
-    // col 1 of 4 → 1/3 = 33.33…%
-    const pos = tileBackgroundStyle(tile({ col: 1 })).backgroundPosition
-    expect(pos.startsWith('33.33')).toBe(true)
-  })
-
-  it('guards a 1×1 grid against divide-by-zero', () => {
-    const style = tileBackgroundStyle(tile({ cols: 1, rows: 1, col: 0, row: 0 }))
-    expect(style.backgroundPosition).toBe('0% 0%')
-    expect(style.backgroundSize).toBe('100% 100%')
+  it('walks the position left/up by this cell in grid units', () => {
+    expect(tileBackgroundStyle(tile({ col: 0, row: 0 })).backgroundPosition).toBe(
+      'calc(var(--cell-w) * 0) calc(var(--cell-h) * 0)',
+    )
+    expect(tileBackgroundStyle(tile({ col: 3, row: 1 })).backgroundPosition).toBe(
+      'calc(var(--cell-w) * -3) calc(var(--cell-h) * -1)',
+    )
   })
 
   it('wraps the src in a url() reference', () => {

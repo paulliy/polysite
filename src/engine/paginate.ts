@@ -17,13 +17,16 @@
  * rendering. Images (![alt](src))
  * are parsed out and rendered via the injected `image` resolver; an optional
  * trailing `{width=N align=left|center|right border}` attribute block sizes,
- * positions, and frames them — see `parseImageAttrs`. Headings and paragraphs
+ * positions, and frames them — see `parseImageAttrs`. `border=snake` makes the
+ * ring a hover-animated snake border (opt-in; recorded per frame as
+ * `Frame.snakeRings` for composables/useSnakeGame.ts) rather than a plain ring. Headings and paragraphs
  * support the same trailing `{align=left|center|right}` attribute (no width/
  * border) on their last source line, to center/right-align the wrapped text —
  * see `stripTextAlign`.
  */
 
 import type {
+  BorderRect,
   CellColor,
   Frame,
   ImageRender,
@@ -65,16 +68,23 @@ export interface ImageAttrs {
   /** Draw a one-cell box-drawing ring around the image (engine/border.ts).
    *  `width` stays the total footprint — the image renders 2 cells smaller. */
   border?: boolean
+  /**
+   * The ring is a "snake" border: while hovered, a snake animation travels it
+   * (composables/useSnakeGame.ts). Authored as `{border=snake}`; implies
+   * `border`. A bare `{border}` is a plain static ring with no snake.
+   */
+  snake?: boolean
 }
 
 const IMAGE_ATTR_RE = /(\w+)\s*=\s*(\S+)/g
-/** The bare `border` flag — a standalone word, not a `key=value` pair. */
+/** The bare `border` flag — a standalone word, not a `key=value` pair (that
+ *  form, `border=snake`, is handled in the key/value loop below). */
 const BORDER_FLAG_RE = /(?:^|\s)border(?:\s|$)/
 
-/** Parse a `width=N align=left|center|right border` attribute string (the
- *  contents of an image's trailing `{...}`). Unrecognized/malformed keys are
- *  ignored; align defaults to 'center' to match the pre-existing centering
- *  behavior. */
+/** Parse a `width=N align=left|center|right border|border=snake` attribute
+ *  string (the contents of an image's trailing `{...}`). Unrecognized/malformed
+ *  keys are ignored; align defaults to 'center' to match the pre-existing
+ *  centering behavior. */
 export function parseImageAttrs(raw: string | undefined): ImageAttrs {
   const attrs: ImageAttrs = { align: 'center' }
   if (!raw) return attrs
@@ -85,6 +95,11 @@ export function parseImageAttrs(raw: string | undefined): ImageAttrs {
       if (Number.isFinite(n) && n > 0) attrs.width = n
     } else if (key === 'align' && (value === 'left' || value === 'center' || value === 'right')) {
       attrs.align = value
+    } else if (key === 'border') {
+      // `border=snake` opts the ring into the snake animation; any other value
+      // (e.g. `border=plain`) is just a ring.
+      attrs.border = true
+      if (value === 'snake') attrs.snake = true
     }
   }
   return attrs
@@ -151,6 +166,8 @@ interface Block {
   align?: ImageAlign
   /** One-cell border ring (image blocks only). */
   border?: boolean
+  /** The border ring is a hover-animated snake ring (`{border=snake}`). */
+  snake?: boolean
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/
@@ -192,6 +209,7 @@ function parseBlocks(markdown: string): Block[] {
         width: attrs.width,
         align: attrs.align,
         border: attrs.border,
+        snake: attrs.snake,
       })
       continue
     }
@@ -725,6 +743,22 @@ function renderBlock(
 // Pagination
 // ---------------------------------------------------------------------------
 
+/** A pagination group: its lines, plus — for a `{border=snake}` image — the
+ *  ring rectangle relative to the group's first line (its final board row is
+ *  resolved when the group lands in a frame). */
+interface Group {
+  lines: Line[]
+  snakeRect?: Omit<BorderRect, 'row'>
+}
+
+/** The ring rectangle of a rendered (padded) block image, measured off its top
+ *  border row: leading blanks = left column, the box run = width. */
+function measureBorderRect(lines: Line[]): Omit<BorderRect, 'row'> {
+  const top = lines[0]?.text ?? ''
+  const trimmed = top.trimStart()
+  return { col: top.length - trimmed.length, width: trimmed.trimEnd().length, height: lines.length }
+}
+
 export function paginateMarkdown(markdown: string, options: PaginateOptions): Frame[] {
   const { cols, rows, image } = options
   if (cols < 1 || rows < 1) throw new Error(`invalid frame size ${cols}x${rows}`)
@@ -732,7 +766,7 @@ export function paginateMarkdown(markdown: string, options: PaginateOptions): Fr
   // Build line groups: each text line is its own (splittable) group; an image
   // is one atomic group that must not break across a frame boundary.
   const blocks = parseBlocks(markdown)
-  const groups: Line[][] = []
+  const groups: Group[] = []
   let previous: Block | undefined
   let i = 0
   while (i < blocks.length) {
@@ -751,13 +785,19 @@ export function paginateMarkdown(markdown: string, options: PaginateOptions): Fr
         let j = i + 1
         while (j < blocks.length && blocks[j]!.kind === 'paragraph') paras.push(blocks[j++]!)
         const floatLines = composeFloat(render, imgCols, block.align, paras, cols)
-        if (previous) groups.push([BLANK_LINE])
+        if (previous) groups.push({ lines: [BLANK_LINE] })
         // Keep the image-height rows together (atomic); overflow text below it
         // paginates line by line like an ordinary paragraph.
         const imgRows = render.lines.length
         const atomic = floatLines.slice(0, imgRows)
-        if (atomic.length > 0) groups.push(atomic)
-        for (const line of floatLines.slice(imgRows)) groups.push([line])
+        if (atomic.length > 0) {
+          const imgOffset = block.align === 'left' ? 0 : cols - imgCols
+          groups.push({
+            lines: atomic,
+            ...(block.snake ? { snakeRect: { col: imgOffset, width: imgCols, height: imgRows } } : {}),
+          })
+        }
+        for (const line of floatLines.slice(imgRows)) groups.push({ lines: [line] })
         previous = paras.length > 0 ? paras[paras.length - 1] : block
         i = j
         continue
@@ -773,33 +813,44 @@ export function paginateMarkdown(markdown: string, options: PaginateOptions): Fr
     }
     // One separator line between blocks, except between consecutive list items.
     if (previous && !(previous.kind === 'listItem' && block.kind === 'listItem')) {
-      groups.push([BLANK_LINE])
+      groups.push({ lines: [BLANK_LINE] })
     }
-    if (block.kind === 'image') groups.push(rendered)
-    else for (const line of rendered) groups.push([line])
+    if (block.kind === 'image') {
+      groups.push({
+        lines: rendered,
+        ...(block.snake ? { snakeRect: measureBorderRect(rendered) } : {}),
+      })
+    } else for (const line of rendered) groups.push({ lines: [line] })
     previous = block
     i++
   }
 
   const frames: Frame[] = []
   let current: Line[] = []
+  let currentRings: BorderRect[] = []
   const flushFrame = () => {
     while (current.length < rows) current.push(BLANK_LINE)
-    frames.push({ lines: current })
+    frames.push({ lines: current, ...(currentRings.length > 0 ? { snakeRings: currentRings } : {}) })
     current = []
+    currentRings = []
   }
   for (const group of groups) {
+    const { lines } = group
     // Never open a frame on a blank separator.
-    if (current.length === 0 && group.length === 1 && group[0]!.text === '') continue
+    if (current.length === 0 && lines.length === 1 && lines[0]!.text === '') continue
     // Keep an atomic group (image) whole: page-break before it if it won't fit.
-    if (group.length > 1 && current.length > 0 && current.length + group.length > rows) {
+    if (lines.length > 1 && current.length > 0 && current.length + lines.length > rows) {
       flushFrame()
     }
-    for (const line of group) {
+    // A snake ring lands at the group's start row within the frame it opens in
+    // (the group is atomic, so it never straddles a frame boundary).
+    if (group.snakeRect) currentRings.push({ row: current.length, ...group.snakeRect })
+    for (const line of lines) {
       current.push(line)
       if (current.length === rows) {
-        frames.push({ lines: current })
+        frames.push({ lines: current, ...(currentRings.length > 0 ? { snakeRings: currentRings } : {}) })
         current = []
+        currentRings = []
       }
     }
   }

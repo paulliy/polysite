@@ -70,7 +70,7 @@ DNS/certs are managed by the Worker's `routes`, not manual DNS records; the
 `workers.dev` URL is explicitly disabled). The domain really is spelled
 `poilygon.dev`. Config is `wrangler.jsonc` at the repo root; its
 `assets.not_found_handling = "single-page-application"` is what makes
-history-mode deep links (`/about`, `/projects/:slug`) serve `index.html` — keep
+history-mode deep links (`/contact`, `/projects/:slug`) serve `index.html` — keep
 it. Deploys are CLI-only from a local machine (no git-connected builds):
 
 ```
@@ -203,18 +203,23 @@ box-drawing faces (`┌─┐│└┘` — real board faces in `characterSet.ts
 the total footprint, so the image itself resolves 2 cells narrower/shorter
 (`imageRequestSize`, shared with the preloader so cache keys match).
 `border.ts` is deliberately its own module and also owns the ring's *geometry*
-(`detectBorderRings` scans a committed face grid for drawn rings — the box glyphs
-appear nowhere else — and `borderRingPath` walks a ring clockwise into an ordered
-cell list). That geometry powers the **border snake**: while a bordered image is
-hovered, a snake of block faces travels the ring, eats apples (an off-white
-`apple` icon, no `:shortcode:`), grows one segment per apple, and resets each lap
-(pure state in `engine/snake.ts`; the hover/timer driver is
-`composables/useSnakeGame.ts`). It honors the flap philosophy: the snake lives in
-a transient `board.overrides` overlay (never touches committed content), and
-BoardCell *flips* a ring cell (a single flap hop + clack) as the head arrives and
-again as the tail leaves — so only the head-front and tail-back cells change per
-step (rule 1). Tunables (`SNAKE_*` in `config.ts`); skipped under reduced motion
-and while loading (Owner added 2026-07-08). A **sized left/right image floats**:
+(`borderRingPath` walks a ring clockwise into an ordered cell list). A distinct
+**snake border** is an opt-in variant authored as `{border=snake}` (a plain
+`{border}` is a static ring and does nothing on hover). The paginator records
+each snake ring's rectangle per frame (`Frame.snakeRings`, content-region
+coords); the store offsets it to global rows (`board.snakeRings`), and the snake
+animates *exactly* those rings — no board scanning, so it's inherently opt-in and
+can't leak onto a plain border or the wrong page. That geometry powers the
+**border snake**: while a `{border=snake}` image is hovered, a snake of block
+faces travels the ring, eats apples (an off-white `apple` icon, no `:shortcode:`),
+grows one segment per apple, and resets each lap (pure state in `engine/snake.ts`;
+the hover/timer driver is `composables/useSnakeGame.ts`). It honors the flap
+philosophy: the snake lives in a transient `board.overrides` overlay (never
+touches committed content), and BoardCell *flips* a ring cell (a single flap hop
++ clack) as the head arrives and again as the tail leaves — so only the head-front
+and tail-back cells change per step (rule 1). Tunables (`SNAKE_*` in `config.ts`);
+skipped under reduced motion and while loading (Owner added 2026-07-08). A
+**sized left/right image floats**:
 the paragraph(s) immediately after it wrap into the columns beside it (variable-
 width word wrap via `wrapFlatTextVariable` — narrow next to the image, full width
 once past its bottom), composed into combined image+text lines by `composeFloat`.

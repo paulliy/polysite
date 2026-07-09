@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { borderRingPath, detectBorderRings, withBorder } from '@/engine/border'
+import { borderRingPath, withBorder } from '@/engine/border'
 import { BORDER_GLYPHS, CHARACTER_SET, spinPoolFor } from '@/engine/characterSet'
-
-/** Turn a picture of a grid (array of equal-length strings) into a face grid. */
-const grid = (rows: string[]) => rows.map((r) => [...r])
 
 describe('withBorder', () => {
   it('wraps the render in a one-cell box-drawing ring', () => {
@@ -42,39 +39,6 @@ describe('withBorder', () => {
 
   it('leaves tiles undefined when the render has none', () => {
     expect(withBorder({ lines: ['#'] }).tiles).toBeUndefined()
-  })
-})
-
-describe('detectBorderRings', () => {
-  it('finds a drawn ring and reports its outer rectangle', () => {
-    const g = grid([
-      '      ',
-      ' ┌──┐ ',
-      ' │xx│ ',
-      ' └──┘ ',
-      '      ',
-    ])
-    expect(detectBorderRings(g)).toEqual([{ row: 1, col: 1, width: 4, height: 3 }])
-  })
-
-  it('ignores stray box glyphs that do not close into a ring', () => {
-    const g = grid([
-      '┌── ',
-      '│  x',
-      '  ─┘',
-    ])
-    expect(detectBorderRings(g)).toEqual([])
-  })
-
-  it('finds multiple independent rings', () => {
-    const g = grid([
-      '┌─┐  ',
-      '│x│  ',
-      '└─┘┌─┐',
-      '   │x│',
-      '   └─┘',
-    ])
-    expect(detectBorderRings(g)).toHaveLength(2)
   })
 })
 

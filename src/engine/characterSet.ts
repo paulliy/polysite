@@ -63,6 +63,8 @@ export const ICONS = {
    * a transient overlay face on a hovered image's border ring.
    */
   apple: '\uE005',
+  resume: '\uE006',
+  wave: '\uE007',
 } as const
 
 export type IconName = keyof typeof ICONS
@@ -102,9 +104,11 @@ const ICON_SHORTCODES: Record<string, string> = {
   ':arrow:': ICONS.arrowRight,
   ':github:': ICONS.github,
   ':linkedin:': ICONS.linkedin,
+  ':resume:': ICONS.resume,
+  ':wave:': ICONS.wave,
 }
 
-const SHORTCODE_RE = /:(?:mail|external|arrow|github|linkedin):/g
+const SHORTCODE_RE = /:(?:mail|external|arrow|github|linkedin|resume|wave):/g
 
 /** Replace `:name:` shortcodes with their single icon face character. */
 export function expandIconShortcodes(text: string): string {

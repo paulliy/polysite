@@ -1,36 +1,37 @@
 /**
- * Drives the border snake (engine/snake.ts) for whichever bordered image the
- * pointer is currently over. This is the DOM/Vue-reactive wrapper around the
+ * Drives the border snake (engine/snake.ts) for whichever `{border=snake}` image
+ * the pointer is currently over. This is the DOM/Vue-reactive wrapper around the
  * pure engine pieces (per CLAUDE.md, engine/ stays framework-free):
  *
- * - It reads the committed board to locate drawn border rings
- *   (`detectBorderRings`) and precomputes each ring's clockwise cell path
- *   (`borderRingPath`), in global board coordinates.
- * - On pointer hover over a ring (border or the image it frames) it starts a
- *   snake there; a step timer advances it and paints the snake's faces into
+ * - It reads the visible frame's authored snake rings from the store
+ *   (`board.snakeRings`, already in global board coordinates) and precomputes
+ *   each ring's clockwise cell path (`borderRingPath`). Only rings authored with
+ *   `{border=snake}` appear there, so a plain `{border}` never animates.
+ * - On pointer hover over a snake ring (its border or the image it frames) it
+ *   starts a snake; a step timer advances it and paints the snake's faces into
  *   `board.overrides`. BoardCell turns each override change into a flap, so the
  *   snake reads as split-flap motion, not a marquee.
- * - On leave, route change, scroll, grid resize, or unmount it stops and clears
- *   its overlay, restoring the plain border. It never runs while the board is
- *   loading or under reduced motion.
+ * - It stops and clears its overlay when the pointer leaves, the visible rings
+ *   change (route / scroll / resize), or the board unmounts. It never runs while
+ *   the board is loading or under reduced motion.
  */
 
 import { onBeforeUnmount, watch } from 'vue'
 import {
-  NAV_ROWS,
   SNAKE_MAX_LENGTH_FRACTION,
   SNAKE_MIN_RING_CELLS,
   SNAKE_START_LENGTH,
   SNAKE_STEP_MS,
 } from '@/config'
-import { borderRingPath, detectBorderRings, type RingCell } from '@/engine/border'
+import { borderRingPath, type RingCell } from '@/engine/border'
 import { createSnake, snakeFaces, stepSnake, type SnakeState } from '@/engine/snake'
+import type { BorderRect } from '@/engine/types'
 import type { useBoardStore } from '@/stores/board'
 
 type BoardStore = ReturnType<typeof useBoardStore>
 
 interface Ring {
-  /** Global-coordinate bounds (nav offset already applied). */
+  /** Global-coordinate bounds (nav offset already applied by the store). */
   top: number
   left: number
   bottom: number
@@ -46,19 +47,6 @@ export function useSnakeGame(board: BoardStore) {
   let timer: ReturnType<typeof setInterval> | undefined
   /** Keys we painted last step, so we can clear the ones the snake left behind. */
   const painted = new Set<string>()
-
-  /** Re-scan the committed content grid for border rings (global coordinates).
-   *  Content cells start at row NAV_ROWS, so ring rows are offset to match the
-   *  `${globalRow}:${col}` keys BoardCell reads from `board.overrides`. */
-  function recomputeRings(): Ring[] {
-    const grid = board.contentRows.map((row) => row.map((cell) => cell.face))
-    return detectBorderRings(grid).map((rect) => {
-      const top = rect.row + NAV_ROWS
-      const left = rect.col
-      const path = borderRingPath({ ...rect, row: top })
-      return { top, left, bottom: top + rect.height - 1, right: left + rect.width - 1, path }
-    })
-  }
 
   function clearPainted() {
     for (const key of painted) board.clearOverride(key)
@@ -131,21 +119,26 @@ export function useSnakeGame(board: BoardStore) {
     if (!Number.isFinite(row) || !Number.isFinite(col)) return leave()
     const ring = ringAt(row, col)
     if (!ring) return leave()
-    // Same ring we're already animating — keep going (identity is stable between
-    // recomputes, so this doesn't restart on every mousemove).
+    // Same ring we're already animating — keep going (identity is stable while
+    // the visible rings don't change, so this doesn't restart on every move).
     if (ring !== activeRing) start(ring)
   }
 
-  // Any change to what the board shows (route, scroll frame, grid size, or the
-  // loading reveal) can move or remove a ring — stop, then rescan. `flush: post`
-  // so the content cells reflect the just-committed frame.
+  // The visible frame's authored snake rings (route / scroll / resize all change
+  // them). Stop the current snake, then rebuild the hover targets + their paths.
   watch(
-    () => [board.frameCount, board.position, board.cols, board.rowCount, board.loading] as const,
-    () => {
+    () => board.snakeRings,
+    (rects: BorderRect[]) => {
       stop()
-      rings = recomputeRings()
+      rings = rects.map((rect) => ({
+        top: rect.row,
+        left: rect.col,
+        bottom: rect.row + rect.height - 1,
+        right: rect.col + rect.width - 1,
+        path: borderRingPath(rect),
+      }))
     },
-    { immediate: true, flush: 'post' },
+    { immediate: true },
   )
 
   onBeforeUnmount(stop)
