@@ -6,13 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
+    "preview": "bun run build-only && wrangler dev",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "deploy": "bun run build-only && wrangler deploy"
   },
   "dependencies": {
     "@vueuse/core": "^14.3.0",
@@ -21,6 +22,7 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.43.1",
     "@playwright/test": "^1.61.0",
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.3",
@@ -43,7 +45,8 @@
     "vite-plugin-vue-devtools": "^8.1.2",
     "vitest": "^4.1.9",
     "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.3.5"
+    "vue-tsc": "^3.3.5",
+    "wrangler": "^4.107.1"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
