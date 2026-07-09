@@ -31,17 +31,19 @@ test('a content image renders as CSS background-image tiles', async ({ page }) =
   await start(page)
   await settle(page, 15000)
   // Count cells whose face carries a background-image slice — the tile-slice
-  // image renderer (replacing the old quadrant-glyph █ blocks).
+  // image renderer (replacing the old quadrant-glyph █ blocks). The image
+  // occupies a single frame partway down the page, and preload is async, so
+  // scroll through the frames and track the most tiles seen on any of them.
   const countTiles = () =>
-    page.locator('.board .face').evaluateAll(
-      (els) => els.filter((el) => getComputedStyle(el).backgroundImage !== 'none').length,
-    )
-  let tiles = 0
-  for (let i = 0; i < 6 && tiles < 30; i++) {
-    tiles = await countTiles()
-    if (tiles >= 30) break
+    page
+      .locator('.board .face')
+      .evaluateAll((els) => els.filter((el) => getComputedStyle(el).backgroundImage !== 'none').length)
+  let maxTiles = 0
+  for (let i = 0; i < 10 && maxTiles < 30; i++) {
+    maxTiles = Math.max(maxTiles, await countTiles())
+    if (maxTiles >= 30) break
     await page.keyboard.press('ArrowDown')
     await settle(page)
   }
-  expect(tiles).toBeGreaterThan(30)
+  expect(maxTiles).toBeGreaterThan(30)
 })

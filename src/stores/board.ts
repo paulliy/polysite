@@ -177,6 +177,26 @@ export const useBoardStore = defineStore('board', () => {
   let flipSerial = 0
 
   /**
+   * Transient overlay faces keyed by `${globalRow}:${col}`, driven by the border
+   * snake (composables/useSnakeGame.ts) — the desired face for a ring cell while
+   * the snake occupies it, layered *over* its committed content face without
+   * touching it. commit()/diffing never read or write this; BoardCell flips to
+   * an override when it appears and back to the content face when it clears, so
+   * the snake obeys the flap philosophy without corrupting the page. Mutated
+   * per-key (like `flips`) so only the changed cells re-render.
+   */
+  const overrides = ref(new Map<string, string>())
+  function setOverride(key: string, face: string) {
+    overrides.value.set(key, face)
+  }
+  function clearOverride(key: string) {
+    overrides.value.delete(key)
+  }
+  function clearOverrides() {
+    if (overrides.value.size > 0) overrides.value.clear()
+  }
+
+  /**
    * Resize the board to a new column/row count (viewport crossed the mobile
    * breakpoint). Rebuilds every region as blanks of the new size and clears
    * transient state; the caller re-paginates and commits the current page,
@@ -420,6 +440,10 @@ export const useBoardStore = defineStore('board', () => {
     position,
     frameCount,
     flips,
+    overrides,
+    setOverride,
+    clearOverride,
+    clearOverrides,
     loading,
     reducedMotion,
     deviceClass,

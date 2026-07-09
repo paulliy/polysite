@@ -17,6 +17,7 @@ import { isIcon, randomLoadingFace } from '@/engine/characterSet'
 import { iconSvg } from '@/engine/icons'
 import { tileBackgroundStyle } from '@/engine/imageTile'
 import { rippleDelayMs } from '@/engine/ripple'
+import { scheduleClacks } from '@/audio/clack'
 import IconGlyph from './IconGlyph.vue'
 
 const props = defineProps<{ cell: BoardCellState; row: number; col: number }>()
@@ -29,6 +30,13 @@ const flip = computed(() => board.flips.get(`${props.row}:${props.col}`))
 
 /** If this cell is part of the centered loading prompt, the face it holds. */
 const messageFace = computed(() => board.loadingMessage.get(`${props.row}:${props.col}`))
+
+/** The border snake's overlay face for this cell, if it currently occupies it
+ *  (composables/useSnakeGame.ts); undefined when the snake isn't on this cell. */
+const override = computed(() => board.overrides.get(`${props.row}:${props.col}`))
+/** What the idle (non-flipping) cell shows: the snake overlay when present, else
+ *  the committed content face. */
+const displayFace = computed(() => override.value ?? props.cell.face)
 
 /**
  * `.flip` (the 3D animator) is mounted through the loading intro and during a
@@ -78,6 +86,9 @@ function faceClasses(cell: BoardCellState) {
     'face--heading': cell.heading,
     'face--bold': cell.bold,
     'face--italic': cell.italic,
+    // Tile cells bleed slightly past the cell edge (see CSS) so fractional cell
+    // sizing can't open a black seam between adjacent image slices.
+    'face--tile': cell.tile != null,
   }
 }
 
@@ -111,6 +122,8 @@ function applyTile(el: HTMLElement, tile: BoardCellState['tile']) {
     el.style.backgroundSize = ''
     el.style.backgroundPosition = ''
   }
+  // Bleed the tile slice past the cell edge (see .face--tile) to hide seams.
+  el.classList.toggle('face--tile', !!tile)
 }
 
 /** Only the real endpoint faces carry paint; intermediate flaps are plain. */
@@ -338,6 +351,63 @@ watch(
   { immediate: true },
 )
 
+// --- Border snake: overlay faces flip in/out like real flaps ----------------
+
+/** A single flap hop between two plain (border / snake / apple) faces, with one
+ *  clack at the landing — the snake head arriving over a ring cell, or the tail
+ *  retracting off it. Overlay faces carry no color/tile (default palette). */
+function runOverrideFlip(from: string, to: string) {
+  const g = ++gen
+  clearTimer()
+  animation?.cancel()
+  animation = null
+  showFlip.value = true
+  scheduleClacks([FLIP_HOP_MS])
+  void nextTick(() => {
+    if (g !== gen) return
+    const front = frontEl.value
+    const back = backEl.value
+    if (!flipEl.value || !front || !back) {
+      showFlip.value = false
+      return
+    }
+    setFaceContent(front, from)
+    front.className = 'face face--front'
+    applyColor(front, null)
+    applyTile(front, null)
+    setFaceContent(back, to)
+    back.className = 'face face--back'
+    applyColor(back, null)
+    applyTile(back, null)
+    animation?.cancel()
+    animation = rotate(FLIP_HOP_MS)
+    if (!animation) {
+      showFlip.value = false
+      return
+    }
+    animation.onfinish = () => {
+      if (g !== gen) return
+      animation?.cancel()
+      animation = null
+      showFlip.value = false // → static overlay/content face
+    }
+  })
+}
+
+// The snake's overlay face arriving or leaving flips this ring cell like a flap.
+// Suppressed while loading, under reduced motion, or when a content flip already
+// owns the cell (that path settles it and the snake is stopped on any commit).
+watch(
+  () => override.value,
+  (next, prev) => {
+    if (board.loading || board.reducedMotion || flip.value) return
+    const from = prev ?? props.cell.face
+    const to = next ?? props.cell.face
+    if (from === to) return
+    runOverrideFlip(from, to)
+  },
+)
+
 onBeforeUnmount(() => {
   gen++
   stop()
@@ -358,7 +428,13 @@ function follow() {
 </script>
 
 <template>
-  <span class="cell" :data-href="cell.href ?? undefined" :data-col="col" @click="follow">
+  <span
+    class="cell"
+    :data-href="cell.href ?? undefined"
+    :data-row="row"
+    :data-col="col"
+    @click="follow"
+  >
     <span v-if="showFlip" ref="flipEl" class="flip">
       <span ref="frontEl" class="face face--front"></span>
       <span ref="backEl" class="face face--back"></span>
@@ -373,9 +449,16 @@ function follow() {
       <IconGlyph v-if="isIcon(flip.from.face)" :char="flip.from.face" />
       <template v-else>{{ flip.from.face }}</template>
     </span>
-    <span v-else class="face" :class="faceClasses(cell)" :style="faceStyle(cell)">
-      <IconGlyph v-if="isIcon(cell.face)" :char="cell.face" />
-      <template v-else>{{ cell.face }}</template>
+    <!-- Idle cell: the snake's overlay face (default palette) when it occupies
+         this ring cell, otherwise the committed content face. -->
+    <span
+      v-else
+      class="face"
+      :class="override === undefined ? faceClasses(cell) : undefined"
+      :style="override === undefined ? faceStyle(cell) : undefined"
+    >
+      <IconGlyph v-if="isIcon(displayFace)" :char="displayFace" />
+      <template v-else>{{ displayFace }}</template>
     </span>
   </span>
 </template>
@@ -410,6 +493,17 @@ function follow() {
   /* Tile-slice image cells set background-image/-size/-position inline; this
      keeps a slice from tiling. Inert for ordinary cells (no background-image). */
   background-repeat: no-repeat;
+}
+
+/* Tile-slice image cell: bleed the face ~0.5px past every edge so neighbouring
+   slices overlap instead of leaving a black gap where fractional cell sizing
+   rounds a seam open. The cell's overflow:hidden + contain:strict clip the
+   bleed, so it never leaks onto adjacent cells or the board edge. */
+.face--tile {
+  position: absolute;
+  inset: -0.5px;
+  width: auto;
+  height: auto;
 }
 
 .face--heading {

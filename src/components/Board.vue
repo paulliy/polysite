@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CELL_FONT_RATIO, NAV_ROWS } from '@/config'
 import { useBoardStore } from '@/stores/board'
+import { useSnakeGame } from '@/composables/useSnakeGame'
 import BoardCell from './BoardCell.vue'
 import NavBar from './NavBar.vue'
 
@@ -11,6 +12,9 @@ import NavBar from './NavBar.vue'
  */
 
 const board = useBoardStore()
+
+// Hover a bordered image → a snake flaps its way around the border ring.
+const snake = useSnakeGame(board)
 </script>
 
 <template>
@@ -19,6 +23,8 @@ const board = useBoardStore()
       class="board"
       :style="{ '--cols': board.cols, '--rows': board.rowCount, '--cell-font-ratio': CELL_FONT_RATIO }"
       aria-hidden="true"
+      @pointermove="snake.onPointerMove"
+      @pointerleave="snake.onPointerLeave"
     >
       <NavBar />
       <div v-for="(row, r) in board.contentRows" :key="r" class="board-row">

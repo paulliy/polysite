@@ -202,9 +202,19 @@ box-drawing faces (`┌─┐│└┘` — real board faces in `characterSet.ts
 `BORDER_GLYPHS`, no spin category, default palette per rule 6); `width` stays
 the total footprint, so the image itself resolves 2 cells narrower/shorter
 (`imageRequestSize`, shared with the preloader so cache keys match).
-`border.ts` is deliberately its own module — it's the intended home for future
-border treatments (e.g. an animated segment travelling the ring). A **sized
-left/right image floats**:
+`border.ts` is deliberately its own module and also owns the ring's *geometry*
+(`detectBorderRings` scans a committed face grid for drawn rings — the box glyphs
+appear nowhere else — and `borderRingPath` walks a ring clockwise into an ordered
+cell list). That geometry powers the **border snake**: while a bordered image is
+hovered, a snake of block faces travels the ring, eats apples (an off-white
+`apple` icon, no `:shortcode:`), grows one segment per apple, and resets each lap
+(pure state in `engine/snake.ts`; the hover/timer driver is
+`composables/useSnakeGame.ts`). It honors the flap philosophy: the snake lives in
+a transient `board.overrides` overlay (never touches committed content), and
+BoardCell *flips* a ring cell (a single flap hop + clack) as the head arrives and
+again as the tail leaves — so only the head-front and tail-back cells change per
+step (rule 1). Tunables (`SNAKE_*` in `config.ts`); skipped under reduced motion
+and while loading (Owner added 2026-07-08). A **sized left/right image floats**:
 the paragraph(s) immediately after it wrap into the columns beside it (variable-
 width word wrap via `wrapFlatTextVariable` — narrow next to the image, full width
 once past its bottom), composed into combined image+text lines by `composeFloat`.
