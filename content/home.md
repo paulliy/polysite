@@ -1,5 +1,7 @@
 # Paul Li
 
+![A photo of the project](/images/outercloudavatar.png){width=20 al1ign=left}
+
 Software, products, and the occasional mechanical interface. This whole
 site is one split-flap board: scroll to page through content, or use the
 links in the top row.

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { gridDimensionsFor, gridToCharLines, pixelsToGrid } from '@/engine/imageToGrid'
+import {
+  gridDimensionsFor,
+  gridToCharLines,
+  pixelsToGrid,
+  pixelsToQuadrantRender,
+} from '@/engine/imageToGrid'
 import { BLANK, BLOCK } from '@/engine/characterSet'
 import type { PixelSource } from '@/engine/types'
 
@@ -103,6 +108,81 @@ describe('pixelsToGrid — validation', () => {
   it('rejects a buffer that does not match its dimensions', () => {
     const bad: PixelSource = { width: 2, height: 2, data: new Uint8ClampedArray(4) }
     expect(() => pixelsToGrid(bad, { cols: 1, rows: 1 })).toThrow(/buffer size/)
+  })
+})
+
+/** Build an RGBA buffer from rows of [r,g,b] triples (fully opaque). */
+function rgbImage(rows: number[][][]): PixelSource {
+  const height = rows.length
+  const width = rows[0].length
+  const data = new Uint8ClampedArray(width * height * 4)
+  rows.flat().forEach(([r, g, b], i) => {
+    data[i * 4] = r
+    data[i * 4 + 1] = g
+    data[i * 4 + 2] = b
+    data[i * 4 + 3] = 255
+  })
+  return { width, height, data }
+}
+
+describe('pixelsToQuadrantRender', () => {
+  it('renders a flat cell as a full colored block', () => {
+    // A single cell samples a 2x2 sub-pixel block; uniform → full BLOCK.
+    const white = grayImage([
+      [255, 255],
+      [255, 255],
+    ])
+    const { lines, colors } = pixelsToQuadrantRender(white, 1, 1)
+    expect(lines).toEqual([BLOCK])
+    expect(colors?.[0]?.[0]?.fg).toBe('rgb(255, 255, 255)')
+    expect(colors?.[0]?.[0]?.bg).toBe('rgb(0, 0, 0)')
+  })
+
+  it('splits a top/bottom edge into an upper-half glyph', () => {
+    const topLit = grayImage([
+      [255, 255],
+      [0, 0],
+    ])
+    const { lines } = pixelsToQuadrantRender(topLit, 1, 1)
+    expect(lines).toEqual(['▀']) // top-left + top-right lit
+  })
+
+  it('splits a left/right edge into a left-half glyph', () => {
+    const leftLit = grayImage([
+      [255, 0],
+      [255, 0],
+    ])
+    const { lines } = pixelsToQuadrantRender(leftLit, 1, 1)
+    expect(lines).toEqual(['▌']) // top-left + bottom-left lit
+  })
+
+  it('paints fg from the bright cluster and bg from the dark cluster', () => {
+    // Top row red, bottom row blue → upper-half glyph, red fg, blue bg.
+    const img = rgbImage([
+      [
+        [255, 0, 0],
+        [255, 0, 0],
+      ],
+      [
+        [0, 0, 255],
+        [0, 0, 255],
+      ],
+    ])
+    const { lines, colors } = pixelsToQuadrantRender(img, 1, 1)
+    expect(lines).toEqual(['▀'])
+    expect(colors?.[0]?.[0]).toEqual({ fg: 'rgb(255, 0, 0)', bg: 'rgb(0, 0, 255)' })
+  })
+
+  it('produces one cell per requested column/row (aspect preserved by caller)', () => {
+    const img = grayImage(Array.from({ length: 4 }, () => Array.from({ length: 6 }, () => 128)))
+    const { lines } = pixelsToQuadrantRender(img, 3, 2)
+    expect(lines).toHaveLength(2)
+    expect(lines.every((l) => [...l].length === 3)).toBe(true)
+  })
+
+  it('rejects a buffer that does not match its dimensions', () => {
+    const bad: PixelSource = { width: 2, height: 2, data: new Uint8ClampedArray(4) }
+    expect(() => pixelsToQuadrantRender(bad, 1, 1)).toThrow(/buffer size/)
   })
 })
 

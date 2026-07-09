@@ -21,7 +21,7 @@ import { diffGrids } from '@/engine/cellDiff'
 import { rippleDelayMs } from '@/engine/ripple'
 import { timingScaleFor, type DeviceClass } from '@/engine/deviceClass'
 import { scheduleClacks } from '@/audio/clack'
-import type { Frame, Line } from '@/engine/types'
+import type { CellColor, Frame, Line } from '@/engine/types'
 
 /** One rendered flap cell: its current face plus link/heading treatment. */
 export interface BoardCellState {
@@ -33,6 +33,11 @@ export interface BoardCellState {
    * yet unpainted until hovered (NavBar), while content CTAs stay painted.
    */
   link: boolean
+  /**
+   * Per-cell color for image cells (CLAUDE.md rule 6's one exception); null for
+   * ordinary cells, which use the default off-white-on-black palette.
+   */
+  color: CellColor | null
 }
 
 /** An in-progress flip on one cell. */
@@ -91,6 +96,7 @@ function lineToCells(line: Line | undefined, cols: number): BoardCellState[] {
       href: link?.href ?? null,
       heading: line?.kind === 'heading',
       link: link ? (link.paint ?? true) : false,
+      color: line?.colors?.[col] ?? null,
     })
   }
   return cells
@@ -106,7 +112,11 @@ function lineToCells(line: Line | undefined, cols: number): BoardCellState[] {
 function cellKeysOf(rows: BoardCellState[][]): string[][] {
   return rows.map((row) =>
     row.map(
-      (cell) => `${cell.face} ${cell.link ? 'L' : ''}${cell.heading ? 'H' : ''}`,
+      (cell) =>
+        `${cell.face} ${cell.link ? 'L' : ''}${cell.heading ? 'H' : ''}` +
+        // Color is part of a cell's flap identity too: an image cell that keeps
+        // its glyph but changes color must still flip to the new color.
+        (cell.color ? ` ${cell.color.fg}|${cell.color.bg}` : ''),
     ),
   )
 }
@@ -248,6 +258,7 @@ export const useBoardStore = defineStore('board', () => {
             href: liveCell.href,
             heading: liveCell.heading,
             link: liveCell.link,
+            color: liveCell.color,
           }
           nextFlips.set(`${globalRow}:${change.col}`, {
             from: fromCell,
@@ -265,6 +276,7 @@ export const useBoardStore = defineStore('board', () => {
         liveCell.href = targetCell.href
         liveCell.heading = targetCell.heading
         liveCell.link = targetCell.link
+        liveCell.color = targetCell.color
       }
     }
 

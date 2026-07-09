@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { frameToGrid, paginateMarkdown } from '@/engine/paginate'
+import { frameToGrid, paginateMarkdown, parseImageAttrs } from '@/engine/paginate'
 import { FALLBACK_FACE } from '@/engine/characterSet'
 import type { Frame } from '@/engine/types'
 
@@ -129,12 +129,180 @@ describe('paginateMarkdown — pagination', () => {
   })
 
   it('inserts a resolved image as centered pixel rows', () => {
-    const image = (src: string) => (src === '/img.png' ? ['##', '##'] : null)
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##', '##'] } : null)
     const [frame] = paginateMarkdown('hi\n\n![alt](/img.png)', { cols: 6, rows: 6, image })
     // Two pixel rows, centered in 6 cols: pad = floor((6-2)/2) = 2.
     expect(texts(frame)[0]).toBe('hi')
     expect(texts(frame)[2]).toBe('  ##')
     expect(texts(frame)[3]).toBe('  ##')
+  })
+
+  it('left-aligns an image with {align=left}', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##'] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){align=left}', { cols: 6, rows: 2, image })
+    expect(texts(frame)[0]).toBe('##')
+  })
+
+  it('right-aligns an image with {align=right}', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##'] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){align=right}', { cols: 6, rows: 2, image })
+    expect(texts(frame)[0]).toBe('    ##')
+  })
+
+  it('requests a narrower render and passes maxCols to the resolver', () => {
+    let requestedMaxCols: number | undefined
+    const image = (src: string, maxCols?: number) => {
+      requestedMaxCols = maxCols
+      return src === '/img.png' ? { lines: ['#'] } : null
+    }
+    paginateMarkdown('![alt](/img.png){width=3}', { cols: 10, rows: 2, image })
+    expect(requestedMaxCols).toBe(3)
+  })
+
+  it('caps a requested width at the available columns', () => {
+    let requestedMaxCols: number | undefined
+    const image = (src: string, maxCols?: number) => {
+      requestedMaxCols = maxCols
+      return src === '/img.png' ? { lines: ['#'] } : null
+    }
+    paginateMarkdown('![alt](/img.png){width=999}', { cols: 10, rows: 2, image })
+    expect(requestedMaxCols).toBe(10)
+  })
+
+  it('combines width and align attributes', () => {
+    const image = (src: string) => (src === '/img.png' ? { lines: ['##'] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){width=4 align=right}', {
+      cols: 10,
+      rows: 2,
+      image,
+    })
+    expect(texts(frame)[0]).toBe('        ##')
+  })
+
+  it('pads the color track to match alignment', () => {
+    const image = (src: string) =>
+      src === '/img.png' ? { lines: ['#'], colors: [[{ fg: 'red', bg: 'blue' }]] } : null
+    const [frame] = paginateMarkdown('![alt](/img.png){align=right}', { cols: 4, rows: 2, image })
+    const line = frame.lines[0]!
+    expect(line.text).toBe('   #')
+    expect(line.colors?.[3]).toEqual({ fg: 'red', bg: 'blue' })
+    expect(line.colors?.[0]).toBeNull()
+  })
+})
+
+describe('paginateMarkdown — floated images (text wraps around)', () => {
+  const img3 = (lines = ['###', '###', '###']) => (src: string) =>
+    src === '/i.png' ? { lines } : null
+  const LONG = 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
+
+  it('wraps a following paragraph beside a left-floated image', () => {
+    const [frame] = paginateMarkdown(`![a](/i.png){width=3 align=left}\n\n${LONG}`, {
+      cols: 20,
+      rows: 12,
+      image: img3(),
+    })
+    const t = texts(frame)
+    // Image occupies the first 3 columns of its 3 rows...
+    expect(t[0].slice(0, 3)).toBe('###')
+    expect(t[1].slice(0, 3)).toBe('###')
+    expect(t[2].slice(0, 3)).toBe('###')
+    // ...a 2-col gutter, then text begins at column 5 beside it.
+    expect(t[0].slice(3, 5)).toBe('  ')
+    expect(t[0][5]).toMatch(/\S/)
+    // Below the image the text runs full width, flush at column 0.
+    expect(t[3][0]).toMatch(/\S/)
+  })
+
+  it('places a right-floated image on the right with text flush left', () => {
+    const [frame] = paginateMarkdown(`![a](/i.png){width=3 align=right}\n\n${LONG}`, {
+      cols: 20,
+      rows: 12,
+      image: img3(),
+    })
+    const t = texts(frame)
+    expect(t[0].slice(17)).toBe('###') // image at the right edge (cols 17-19)
+    expect(t[0][0]).toMatch(/\S/) // text flush left
+  })
+
+  it('shifts link columns to sit beside a left float', () => {
+    const [frame] = paginateMarkdown(
+      `![a](/i.png){width=3 align=left}\n\n[home](/) and more text here to fill the line`,
+      { cols: 24, rows: 12, image: img3() },
+    )
+    const link = frame.lines[0]!.links[0]!
+    expect(link.start).toBeGreaterThanOrEqual(5) // past image (3) + gutter (2)
+    expect(frame.lines[0]!.text.slice(link.start, link.end)).toBe('home')
+  })
+
+  it('carries image colors on the float rows only', () => {
+    const image = (src: string) =>
+      src === '/i.png'
+        ? {
+            lines: ['##', '##'],
+            colors: [
+              [
+                { fg: 'red', bg: 'black' },
+                { fg: 'red', bg: 'black' },
+              ],
+              [
+                { fg: 'red', bg: 'black' },
+                { fg: 'red', bg: 'black' },
+              ],
+            ],
+          }
+        : null
+    const [frame] = paginateMarkdown(`![a](/i.png){width=2 align=left}\n\n${LONG}`, {
+      cols: 20,
+      rows: 12,
+      image,
+    })
+    expect(frame.lines[0]!.colors?.[0]).toEqual({ fg: 'red', bg: 'black' })
+    // Rows below the image (index >= 2) carry no color.
+    expect(frame.lines[2]!.colors).toBeUndefined()
+  })
+
+  it('falls back to a block image when there is no room to wrap', () => {
+    // 6 cols, a 5-col image → only -1 cols left for text: no float.
+    const [frame] = paginateMarkdown('![a](/i.png){width=5 align=left}\n\nhello world', {
+      cols: 6,
+      rows: 6,
+      image: img3(['#####']),
+    })
+    const t = texts(frame)
+    expect(t[0]).toBe('#####') // block image (left-aligned), full line to itself
+    // The paragraph is NOT consumed into a float — it appears on its own line.
+    expect(t.some((line) => line.startsWith('hello'))).toBe(true)
+  })
+
+  it('does not float a centered image', () => {
+    const [frame] = paginateMarkdown('![a](/i.png){width=3 align=center}\n\ntext here', {
+      cols: 20,
+      rows: 12,
+      image: img3(),
+    })
+    // Centered image keeps its own rows; text is a separate block below it.
+    const t = texts(frame)
+    expect(t[0].trim()).toBe('###')
+    expect(t.some((line) => line.trim() === 'text here')).toBe(true)
+  })
+})
+
+describe('parseImageAttrs', () => {
+  it('defaults to center with no width when given nothing', () => {
+    expect(parseImageAttrs(undefined)).toEqual({ align: 'center' })
+  })
+
+  it('parses width and align together', () => {
+    expect(parseImageAttrs('width=12 align=left')).toEqual({ width: 12, align: 'left' })
+  })
+
+  it('ignores malformed or unknown keys', () => {
+    expect(parseImageAttrs('width=abc align=sideways foo=bar')).toEqual({ align: 'center' })
+  })
+
+  it('ignores a non-positive width', () => {
+    expect(parseImageAttrs('width=0')).toEqual({ align: 'center' })
+    expect(parseImageAttrs('width=-5')).toEqual({ align: 'center' })
   })
 })
 

@@ -75,6 +75,19 @@ function faceClasses(cell: BoardCellState) {
   return { 'face--link': cell.link, 'face--heading': cell.heading }
 }
 
+/** Inline color for an image cell (CLAUDE.md rule 6's one exception), or
+ *  undefined so the cell keeps the default off-white-on-black palette. */
+function faceStyle(cell: BoardCellState) {
+  return cell.color ? { color: cell.color.fg, background: cell.color.bg } : undefined
+}
+
+/** Paint a flip face's color imperatively (mirrors faceStyle for the WAAPI hops,
+ *  which set content/class directly rather than through Vue). */
+function applyColor(el: HTMLElement, color: BoardCellState['color']) {
+  el.style.color = color ? color.fg : ''
+  el.style.background = color ? color.bg : ''
+}
+
 /** Only the real endpoint faces carry paint; intermediate flaps are plain. */
 function faceClassName(base: string, cell: BoardCellState, painted: boolean): string {
   let className = base
@@ -188,6 +201,7 @@ function settle() {
       }
       setFaceContent(back, props.cell.face)
       back.className = faceClassName('face face--back', props.cell, true)
+      applyColor(back, props.cell.color)
       animation?.cancel()
       animation = rotate(FLIP_HOP_MS)
       if (!animation) {
@@ -224,9 +238,12 @@ function startFlip(g: number) {
       if (g !== gen) return
       setFaceContent(front, faces[step] ?? props.cell.face)
       front.className = faceClassName('face face--front', f.from, step === 0)
+      // Only the real endpoints carry color; intermediate flaps are plain.
+      applyColor(front, step === 0 ? f.from.color : null)
       animation?.cancel()
       setFaceContent(back, faces[step + 1] ?? props.cell.face)
       back.className = faceClassName('face face--back', props.cell, step === lastHop)
+      applyColor(back, step === lastHop ? props.cell.color : null)
       animation = rotate(FLIP_HOP_MS)
       if (!animation) return
       animation.onfinish = () => {
@@ -317,11 +334,16 @@ function follow() {
       <span ref="backEl" class="face face--back"></span>
     </span>
     <!-- Targeted flip awaiting its ripple turn: hold the OLD face. -->
-    <span v-else-if="waiting && flip" class="face" :class="faceClasses(flip.from)">
+    <span
+      v-else-if="waiting && flip"
+      class="face"
+      :class="faceClasses(flip.from)"
+      :style="faceStyle(flip.from)"
+    >
       <IconGlyph v-if="isIcon(flip.from.face)" :char="flip.from.face" />
       <template v-else>{{ flip.from.face }}</template>
     </span>
-    <span v-else class="face" :class="faceClasses(cell)">
+    <span v-else class="face" :class="faceClasses(cell)" :style="faceStyle(cell)">
       <IconGlyph v-if="isIcon(cell.face)" :char="cell.face" />
       <template v-else>{{ cell.face }}</template>
     </span>

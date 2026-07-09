@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
+    "deploy": "bun run build && wrangler deploy",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "build-only": "vite build",
@@ -43,7 +44,8 @@
     "vite-plugin-vue-devtools": "^8.1.2",
     "vitest": "^4.1.9",
     "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.3.5"
+    "vue-tsc": "^3.3.5",
+    "wrangler": "^4.107.1"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"

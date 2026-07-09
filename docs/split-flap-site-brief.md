@@ -90,7 +90,7 @@ Cells that stay the same — including blank-to-blank — never animate.
 | Icon glyphs | A small curated SVG set (e.g. a subset of Lucide icons, or custom-drawn) baked into the flap character set alongside letters | Keeps icons visually consistent with the type and flip-able like any character |
 | Content | Markdown files, parsed at build time | No backend/CMS needed |
 | Testing | Vitest for the pagination + cell-diff logic (pure functions, high-value to test), Playwright for e2e (flip interaction, resize, reduced-motion) | |
-| Hosting | Vercel, Netlify, Cloudflare Pages, or GitHub Pages | Static SPA, no SSR needed — no SEO requirement |
+| Hosting | Cloudflare Workers static assets (implemented — see CLAUDE.md "Deployment") | Static SPA, no SSR needed — no SEO requirement |
 
 ## 4. Still-open, left as adjustable defaults
 

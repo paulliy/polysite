@@ -8,10 +8,12 @@
  * Supported markdown subset for v1: #–###### headings, paragraphs, `-`/`*`
  * list items, [text](href) links. Emphasis markers (**, *, `) are stripped —
  * a flap board renders characters, not inline styles. Images (![alt](src))
- * are parsed out and ignored until the image pipeline lands in Phase 8.
+ * are parsed out and rendered via the injected `image` resolver; an optional
+ * trailing `{width=N align=left|center|right}` attribute block sizes and
+ * positions them — see `parseImageAttrs`.
  */
 
-import type { Frame, InlineSegment, Line, LinkSpan, SemanticBlock } from './types'
+import type { CellColor, Frame, ImageRender, InlineSegment, Line, LinkSpan, SemanticBlock } from './types'
 import { BLANK, expandIconShortcodes, isIcon, normalizeChar, normalizeText } from './characterSet'
 import { ICON_LABELS } from './icons'
 
@@ -21,14 +23,51 @@ export interface PaginateOptions {
   /** Content-region height in lines (grid rows minus nav rows). */
   rows: number
   /**
-   * Resolves an image `src` to its pre-rendered pixelated character lines, or
-   * null if it isn't ready. Injected so the engine stays pure — the browser
-   * canvas pipeline lives in content/imageLoader.ts.
+   * Resolves an image `src` to its pre-rendered pixelated lines + per-cell
+   * colors, or null if it isn't ready. `maxCols` narrows the render to a
+   * `{width=N}` attribute's request; omitted/undefined means the full content
+   * width. Injected so the engine stays pure — the browser canvas pipeline
+   * lives in content/imageLoader.ts.
    */
-  image?: (src: string) => string[] | null
+  image?: (src: string, maxCols?: number) => ImageRender | null
 }
 
 const BLANK_LINE: Line = { text: '', kind: 'body', links: [] }
+
+export type ImageAlign = 'left' | 'center' | 'right'
+
+export interface ImageAttrs {
+  /** Requested image width in character cells; unset renders full width. */
+  width?: number
+  align: ImageAlign
+}
+
+const IMAGE_ATTR_RE = /(\w+)\s*=\s*(\S+)/g
+
+/** Parse a `width=N align=left|center|right` attribute string (the contents of
+ *  an image's trailing `{...}`). Unrecognized/malformed keys are ignored;
+ *  align defaults to 'center' to match the pre-existing centering behavior. */
+export function parseImageAttrs(raw: string | undefined): ImageAttrs {
+  const attrs: ImageAttrs = { align: 'center' }
+  if (!raw) return attrs
+  for (const [, key, value] of raw.matchAll(IMAGE_ATTR_RE)) {
+    if (key === 'width') {
+      const n = Number.parseInt(value ?? '', 10)
+      if (Number.isFinite(n) && n > 0) attrs.width = n
+    } else if (key === 'align' && (value === 'left' || value === 'center' || value === 'right')) {
+      attrs.align = value
+    }
+  }
+  return attrs
+}
+
+/**
+ * Matches a markdown image with an optional trailing `{...}` attribute block,
+ * anywhere in a string (global). Shared between this module's per-line block
+ * parser and content/imageLoader.ts, which scans whole documents to preload
+ * every referenced image at its requested size.
+ */
+export const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)\)(?:\{([^}]*)\})?/g
 
 // ---------------------------------------------------------------------------
 // Block parsing
@@ -41,11 +80,15 @@ interface Block {
   level?: number
   /** Image source (image blocks only). */
   src?: string
+  /** Requested render width in cells (image blocks only); unset = full width. */
+  width?: number
+  /** Horizontal placement (image blocks only). */
+  align?: ImageAlign
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/
 const LIST_ITEM_RE = /^[-*]\s+(.*)$/
-const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/
+const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)(?:\{([^}]*)\})?$/
 
 function parseBlocks(markdown: string): Block[] {
   const blocks: Block[] = []
@@ -71,7 +114,14 @@ function parseBlocks(markdown: string): Block[] {
     if (image) {
       flush()
       openListItem = null
-      blocks.push({ kind: 'image', text: image[1] ?? '', src: image[2] ?? '' })
+      const attrs = parseImageAttrs(image[3])
+      blocks.push({
+        kind: 'image',
+        text: image[1] ?? '',
+        src: image[2] ?? '',
+        width: attrs.width,
+        align: attrs.align,
+      })
       continue
     }
     const heading = HEADING_RE.exec(line)
@@ -281,20 +331,165 @@ function wrapFlatText(
   return lines
 }
 
+// ---------------------------------------------------------------------------
+// Floated images: text wraps into the columns beside a sized left/right image
+// ---------------------------------------------------------------------------
+
+/**
+ * Greedy word wrap where the line width can change per output line — the float
+ * layout needs the text narrow while it runs alongside the image, then full
+ * width once it clears the bottom of the image. `widthAt(i)` gives the usable
+ * width for output line `i` (offset by `indexOffset`, the number of lines
+ * already emitted above this text). Links are tracked relative to each line's
+ * own column 0, like `wrapFlatText`.
+ */
+function wrapFlatTextVariable(
+  flat: FlatText,
+  widthAt: (lineIndex: number) => number,
+  indexOffset: number,
+): Line[] {
+  const words: Word[] = []
+  for (const match of flat.text.matchAll(/\S+/g)) words.push({ text: match[0], src: match.index })
+
+  const lines: Line[] = []
+  let placed: Array<Word & { col: number }> = []
+  let cursor = 0
+  const curWidth = () => Math.max(1, widthAt(indexOffset + lines.length))
+
+  const flushLine = () => {
+    if (placed.length === 0) return
+    const text = placed.map((w, i) => (i === 0 ? w.text : ' ' + w.text)).join('')
+    lines.push({ text, kind: 'body', links: lineLinks(placed, flat.links) })
+    placed = []
+    cursor = 0
+  }
+
+  for (const word of words) {
+    let w = word
+    // Hard-break a word longer than the current line can hold, a chunk at a
+    // time — re-reading the width after each flushed line (it may have widened).
+    while (w.text.length > curWidth()) {
+      if (placed.length > 0) flushLine()
+      const width = curWidth()
+      placed.push({ text: w.text.slice(0, width), src: w.src, col: 0 })
+      cursor = width
+      flushLine()
+      w = { text: w.text.slice(width), src: w.src + width }
+    }
+    const width = curWidth()
+    if (placed.length > 0 && cursor + 1 + w.text.length > width) flushLine()
+    const startCol = placed.length === 0 ? 0 : cursor + 1
+    placed.push({ ...w, col: startCol })
+    cursor = startCol + w.text.length
+  }
+  flushLine()
+  return lines
+}
+
+/** Wrap a run of paragraphs into one variable-width text column, a blank line
+ *  between paragraphs (which also advances the line index widthAt sees). */
+function wrapParagraphsVariable(paras: FlatText[], widthAt: (i: number) => number): Line[] {
+  const out: Line[] = []
+  paras.forEach((flat, idx) => {
+    if (idx > 0) out.push({ text: '', kind: 'body', links: [] })
+    for (const line of wrapFlatTextVariable(flat, widthAt, out.length)) out.push(line)
+  })
+  return out
+}
+
+/** Blanks between a float image and the text beside it. */
+const FLOAT_GUTTER = 2
+/** Below this many columns of usable text width, floating isn't worth it —
+ *  the image renders as a normal block instead. */
+const MIN_FLOAT_TEXT_WIDTH = 12
+
+/**
+ * Compose a floated image with the paragraphs that wrap around it into a single
+ * run of lines. The image sits on `align`'s side for its own height; text fills
+ * the opposite columns beside it, then flows full width below it. Image cells
+ * keep their colors; text cells stay on the default palette.
+ */
+function composeFloat(
+  render: ImageRender,
+  imgCols: number,
+  align: 'left' | 'right',
+  paras: Block[],
+  cols: number,
+): Line[] {
+  const imgRows = render.lines.length
+  const textWidth = cols - imgCols - FLOAT_GUTTER
+  const widthAt = (i: number) => (i < imgRows ? textWidth : cols)
+  const textLines = wrapParagraphsVariable(
+    paras.map((p) => parseInline(p.text)),
+    widthAt,
+  )
+
+  const imgOffset = align === 'left' ? 0 : cols - imgCols
+  const out: Line[] = []
+  const total = Math.max(imgRows, textLines.length)
+  for (let i = 0; i < total; i++) {
+    const cells = new Array<string>(cols).fill(BLANK)
+    const colors: (CellColor | null)[] = new Array<CellColor | null>(cols).fill(null)
+    const links: LinkSpan[] = []
+
+    if (i < imgRows) {
+      const imgText = render.lines[i] ?? ''
+      for (let c = 0; c < imgText.length; c++) cells[imgOffset + c] = imgText[c] ?? BLANK
+      const rowColors = render.colors?.[i]
+      if (rowColors) for (let c = 0; c < rowColors.length; c++) colors[imgOffset + c] = rowColors[c] ?? null
+    }
+
+    const tl = textLines[i]
+    if (tl) {
+      // Beside the image, text sits opposite it; below the image it's flush left.
+      const textOffset = i < imgRows && align === 'left' ? imgCols + FLOAT_GUTTER : 0
+      for (let c = 0; c < tl.text.length; c++) cells[textOffset + c] = tl.text[c] ?? BLANK
+      for (const l of tl.links) links.push({ ...l, start: l.start + textOffset, end: l.end + textOffset })
+    }
+
+    out.push({
+      text: cells.join(''),
+      kind: 'body',
+      links,
+      // Only image rows carry color; text-only overflow rows use the default palette.
+      colors: i < imgRows ? colors : undefined,
+    })
+  }
+  return out
+}
+
 const LIST_INDENT = 2
 
-function renderImageBlock(src: string, cols: number, resolve?: PaginateOptions['image']): Line[] {
-  const charLines = resolve?.(src) ?? null
-  if (!charLines) return [] // not loaded yet — appears on the next re-paginate
-  return charLines.map((text) => {
-    const pad = Math.max(0, Math.floor((cols - text.length) / 2))
-    return { text: ' '.repeat(pad) + text, kind: 'body' as const, links: [] }
+function renderImageBlock(
+  src: string,
+  cols: number,
+  resolve: PaginateOptions['image'] | undefined,
+  width: number | undefined,
+  align: ImageAlign,
+): Line[] {
+  const maxCols = width ? Math.min(width, cols) : cols
+  const render = resolve?.(src, maxCols) ?? null
+  if (!render) return [] // not loaded yet — appears on the next re-paginate
+  return render.lines.map((text, i) => {
+    const pad =
+      align === 'left'
+        ? 0
+        : align === 'right'
+          ? Math.max(0, cols - text.length)
+          : Math.max(0, Math.floor((cols - text.length) / 2))
+    const rowColors = render.colors?.[i]
+    // Pad the color track with the alignment blanks (null = default palette),
+    // keeping it column-aligned with the padded text.
+    const colors: (CellColor | null)[] | undefined = rowColors
+      ? [...Array<CellColor | null>(pad).fill(null), ...rowColors]
+      : undefined
+    return { text: ' '.repeat(pad) + text, kind: 'body' as const, links: [], colors }
   })
 }
 
 function renderBlock(block: Block, cols: number, image?: PaginateOptions['image']): Line[] {
   if (block.kind === 'image') {
-    return renderImageBlock(block.src ?? '', cols, image)
+    return renderImageBlock(block.src ?? '', cols, image, block.width, block.align ?? 'center')
   }
   const flat = parseInline(block.text)
   if (block.kind === 'heading') {
@@ -327,10 +522,41 @@ export function paginateMarkdown(markdown: string, options: PaginateOptions): Fr
   const blocks = parseBlocks(markdown)
   const groups: Line[][] = []
   let previous: Block | undefined
-  for (const block of blocks) {
+  let i = 0
+  while (i < blocks.length) {
+    const block = blocks[i]!
+
+    // Float: a sized left/right image lets the following paragraph(s) wrap into
+    // the columns beside it (then flow full width below it). Needs the image
+    // resolved (for its real width) and enough room left over for text.
+    if (block.kind === 'image' && block.width && (block.align === 'left' || block.align === 'right')) {
+      const render = image?.(block.src ?? '', Math.min(block.width, cols)) ?? null
+      const imgCols = render?.lines[0]?.length ?? 0
+      if (render && imgCols > 0 && cols - imgCols - FLOAT_GUTTER >= MIN_FLOAT_TEXT_WIDTH) {
+        const paras: Block[] = []
+        let j = i + 1
+        while (j < blocks.length && blocks[j]!.kind === 'paragraph') paras.push(blocks[j++]!)
+        const floatLines = composeFloat(render, imgCols, block.align, paras, cols)
+        if (previous) groups.push([BLANK_LINE])
+        // Keep the image-height rows together (atomic); overflow text below it
+        // paginates line by line like an ordinary paragraph.
+        const imgRows = render.lines.length
+        const atomic = floatLines.slice(0, imgRows)
+        if (atomic.length > 0) groups.push(atomic)
+        for (const line of floatLines.slice(imgRows)) groups.push([line])
+        previous = paras.length > 0 ? paras[paras.length - 1] : block
+        i = j
+        continue
+      }
+      // Not floated (image not ready, or no room) — fall through to block layout.
+    }
+
     const rendered = renderBlock(block, cols, image)
     // An unresolved image renders to nothing; skip its separator too.
-    if (rendered.length === 0 && block.kind === 'image') continue
+    if (rendered.length === 0 && block.kind === 'image') {
+      i++
+      continue
+    }
     // One separator line between blocks, except between consecutive list items.
     if (previous && !(previous.kind === 'listItem' && block.kind === 'listItem')) {
       groups.push([BLANK_LINE])
@@ -338,6 +564,7 @@ export function paginateMarkdown(markdown: string, options: PaginateOptions): Fr
     if (block.kind === 'image') groups.push(rendered)
     else for (const line of rendered) groups.push([line])
     previous = block
+    i++
   }
 
   const frames: Frame[] = []

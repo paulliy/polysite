@@ -5,7 +5,7 @@ import Board from '@/components/Board.vue'
 import HiddenContent from '@/components/HiddenContent.vue'
 import { useBoardStore } from '@/stores/board'
 import { contentForPath } from '@/content/loader'
-import { imageLines, preloadContentImages } from '@/content/imageLoader'
+import { imageRender, preloadContentImages } from '@/content/imageLoader'
 import { paginateMarkdown } from '@/engine/paginate'
 import { useScrollPosition } from '@/composables/useScrollPosition'
 import { useReducedMotion } from '@/composables/useReducedMotion'
@@ -48,7 +48,7 @@ function renderCurrentPage() {
     paginateMarkdown(contentForPath(route.path), {
       cols: board.cols,
       rows: board.contentRowCount,
-      image: (src) => imageLines(src, board.cols, board.contentRowCount),
+      image: (src, maxCols) => imageRender(src, maxCols ?? board.cols, board.contentRowCount),
     }),
   )
 }

@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "polysite",
+  "compatibility_date": "2026-07-08",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "poilygon.dev", "custom_domain": true },
+    { "pattern": "www.poilygon.dev", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -95,16 +95,16 @@ export const LOADING_MIN_DURATION_MS = 1000
  * but only a bounded number of cells animate at once. Code constants, no
  * visitor-facing control.
  */
-export const LOADING_HOP_MS = 110
+export const LOADING_HOP_MS = 130
 /** Floor for the gap between one cell's hops, before jitter. */
-export const LOADING_GAP_MIN_MS = 90
+export const LOADING_GAP_MIN_MS = 160
 /**
  * Target number of cells mid-flip at any instant. Each cell's gap is derived
  * from this and the total cell count, so the noise costs about the same
  * whether the grid is 44x22 or 56x28 — it scales instead of animating every
  * cell at once (which spikes the main thread on dense grids).
  */
-export const LOADING_MAX_CONCURRENT = 220
+export const LOADING_MAX_CONCURRENT = 110
 /** Random +/- fraction on each computed gap so cells stay desynchronized. */
 export const LOADING_GAP_JITTER = 0.6
 
@@ -154,7 +154,12 @@ export const DEVICE_TIMING_SCALE = {
   low: { loadingConcurrency: 0.4, rippleDuration: 1.35, intermediateHops: 0.5 },
 } as const
 
-/** Image pixelation granularity: character cells per image "pixel". */
+/**
+ * Image pixelation granularity: character cells per image "pixel". Each cell is
+ * then sampled as a 2×2 block of sub-pixels rendered with a quadrant block glyph
+ * (engine/imageToGrid.ts), so the effective image resolution is 2× the cell grid
+ * on each axis — four sub-pixels per flap. Raise this to pixelate more coarsely.
+ */
 export const IMAGE_BLOCK_SIZE = 1
 
 /** Mechanical clack per flip. */

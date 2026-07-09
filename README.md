@@ -7,14 +7,16 @@ full design brief and `CLAUDE.md` for project conventions.
 ## Commands
 
 ```sh
-bun install        # install deps
-bun run dev        # local dev server
-bun run build      # type-check + production build
-bun run preview    # preview the production build
-bun run test:unit  # vitest
-bun run test:e2e   # playwright (run `bunx playwright install` once first)
-bun run lint       # eslint --fix
-bun run format     # prettier --write
+bun install                    # install deps
+bun run dev                    # local dev server (vite)
+bun run build                  # type-check (vue-tsc --build) + production build
+bun run preview                # preview the production build
+bun run test:unit               # vitest, watch mode
+bun run test:unit run           # vitest, single run
+bun run test:e2e                 # playwright, all projects (run `bunx playwright install` once first)
+bun run test:e2e --project=chromium  # single browser project
+bun run lint                       # eslint . --fix --cache
+bun run format                       # prettier --write src/ (experimental CLI)
 ```
 
 ## Fonts

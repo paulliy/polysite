@@ -10,6 +10,33 @@ export const FALLBACK_FACE = '?'
 /** Full-cell block, the "lit" face for pixelated images (brief §2). */
 export const BLOCK = '█'
 
+/**
+ * 2×2 sub-cell block glyphs, indexed by a 4-bit mask of which sub-pixels are
+ * lit (bit 0 = top-left, 1 = top-right, 2 = bottom-left, 3 = bottom-right).
+ * Lets one flap encode four image sub-pixels, quadrupling image resolution
+ * without shrinking the grid (see engine/imageToGrid.ts). Index 0 is blank and
+ * index 15 is the full BLOCK, so the whole range is a superset of the old
+ * two-tone faces.
+ */
+export const QUADRANT_BY_MASK: readonly string[] = [
+  BLANK, // 0000
+  '▘', // 0001 TL
+  '▝', // 0010 TR
+  '▀', // 0011 TL TR
+  '▖', // 0100 BL
+  '▌', // 0101 TL BL
+  '▞', // 0110 TR BL
+  '▛', // 0111 TL TR BL
+  '▗', // 1000 BR
+  '▚', // 1001 TL BR
+  '▐', // 1010 TR BR
+  '▜', // 1011 TL TR BR
+  '▄', // 1100 BL BR
+  '▙', // 1101 TL BL BR
+  '▟', // 1110 TR BL BR
+  BLOCK, // 1111 all
+]
+
 export const ICONS = {
   email: '\uE000',
   externalLink: '\uE001',
@@ -27,7 +54,7 @@ const PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
 export const CHARACTER_SET: readonly string[] = [
   BLANK,
-  BLOCK,
+  ...QUADRANT_BY_MASK.slice(1), // sub-cell blocks incl. the full BLOCK
   ...UPPER,
   ...LOWER,
   ...DIGITS,
