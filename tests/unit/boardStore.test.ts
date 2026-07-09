@@ -59,6 +59,25 @@ describe('board store', () => {
     expect(bodyRow[0]!.href).toBeNull()
   })
 
+  it('renders bold/italic spans onto cell flags', () => {
+    const board = useBoardStore()
+    const [frame] = paginateMarkdown('a **bold** and *italic* word', {
+      cols: GRID_COLS,
+      rows: CONTENT_ROWS,
+    })
+    board.setPage([frame!])
+
+    const row = board.contentRows[0]!
+    const text = row.map((c) => c.face).join('')
+    const boldStart = text.indexOf('bold')
+    const italicStart = text.indexOf('italic')
+    expect(row[boldStart]!.bold).toBe(true)
+    expect(row[boldStart + 3]!.bold).toBe(true)
+    expect(row[italicStart]!.italic).toBe(true)
+    expect(row[0]!.bold).toBe(false) // "a " is plain
+    expect(row[0]!.italic).toBe(false)
+  })
+
   it('always fills the full content region even for short frames', () => {
     const board = useBoardStore()
     const [frame] = paginateMarkdown('hi', { cols: GRID_COLS, rows: CONTENT_ROWS })
@@ -207,6 +226,20 @@ describe('board store', () => {
     // Same characters ("b c") — but all three cells lose the navy link
     // paint, including the blank between the words, so all three flip.
     expect(board.flips.size).toBe(3)
+    expect(board.flips.has(`${NAV_ROWS}:1`)).toBe(true)
+  })
+
+  it('flips cells whose bold/italic changes even when the character does not', () => {
+    const board = useBoardStore()
+    board.loading = false
+    const [bold] = paginateMarkdown('**bc**', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    const [plain] = paginateMarkdown('bc', { cols: GRID_COLS, rows: CONTENT_ROWS })
+    board.setPage([bold!])
+    board.setPage([plain!])
+
+    // Same characters ("bc") — but both cells lose the bold weight, so both flip.
+    expect(board.flips.size).toBe(2)
+    expect(board.flips.has(`${NAV_ROWS}:0`)).toBe(true)
     expect(board.flips.has(`${NAV_ROWS}:1`)).toBe(true)
   })
 

@@ -37,12 +37,32 @@ export const QUADRANT_BY_MASK: readonly string[] = [
   BLOCK, // 1111 all
 ]
 
+/**
+ * Light box-drawing faces used for the optional border ring around content
+ * images (see engine/border.ts). Like the quadrant blocks they have no spin
+ * category, so border cells flip directly to their target face.
+ */
+export const BORDER_GLYPHS = {
+  horizontal: '─',
+  vertical: '│',
+  topLeft: '┌',
+  topRight: '┐',
+  bottomLeft: '└',
+  bottomRight: '┘',
+} as const
+
 export const ICONS = {
   email: '\uE000',
   externalLink: '\uE001',
   arrowRight: '\uE002',
   github: '\uE003',
   linkedin: '\uE004',
+  /**
+   * Decorative \u2014 the apple the border snake chases (engine/snake.ts). It has no
+   * `:shortcode:` so it can't be authored into content; it only ever appears as
+   * a transient overlay face on a hovered image's border ring.
+   */
+  apple: '\uE005',
 } as const
 
 export type IconName = keyof typeof ICONS
@@ -55,6 +75,7 @@ const PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 export const CHARACTER_SET: readonly string[] = [
   BLANK,
   ...QUADRANT_BY_MASK.slice(1), // sub-cell blocks incl. the full BLOCK
+  ...Object.values(BORDER_GLYPHS),
   ...UPPER,
   ...LOWER,
   ...DIGITS,

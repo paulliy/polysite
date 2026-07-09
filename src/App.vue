@@ -48,7 +48,8 @@ function renderCurrentPage() {
     paginateMarkdown(contentForPath(route.path), {
       cols: board.cols,
       rows: board.contentRowCount,
-      image: (src, maxCols) => imageRender(src, maxCols ?? board.cols, board.contentRowCount),
+      image: (src, maxCols, maxRows) =>
+        imageRender(src, maxCols ?? board.cols, maxRows ?? board.contentRowCount),
     }),
   )
 }

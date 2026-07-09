@@ -3,10 +3,14 @@
  * framework-agnostic TypeScript — no Vue imports (CLAUDE.md).
  */
 
-/** A link region within a single line, as [start, end) column indices. */
-export interface LinkSpan {
+/** A column region within a single line, as [start, end) indices. */
+export interface Span {
   start: number
   end: number
+}
+
+/** A link region within a single line, as [start, end) column indices. */
+export interface LinkSpan extends Span {
   /**
    * Omit to get the navy-CTA paint treatment without navigation — e.g. NavBar's
    * title block, which paints/flips like a link but doesn't go anywhere.
@@ -34,6 +38,23 @@ export interface CellColor {
   bg: string
 }
 
+/**
+ * A reference to one slice of a full-resolution image, rendered via CSS
+ * background-position/-size (a "sprite grid") rather than sampled into glyphs.
+ * Every tile of one resolved image shares `cols`/`rows` (the tile-grid size);
+ * `col`/`row` locate this cell within it. BoardCell computes the actual
+ * background-position/-size from these (see engine/imageTile.ts).
+ */
+export interface ImageTileRef {
+  src: string
+  /** This cell's column/row within the image's tile grid. */
+  col: number
+  row: number
+  /** Total tile-grid size (identical across every tile of one image). */
+  cols: number
+  rows: number
+}
+
 /** One board line of content (unpadded text plus metadata). */
 export interface Line {
   text: string
@@ -41,19 +62,32 @@ export interface Line {
   /** Heading level (1–6); only present when kind === 'heading'. */
   level?: number
   links: LinkSpan[]
+  /** Column spans rendered bold (`**text**` in markdown). Absent = none. */
+  bold?: Span[]
+  /** Column spans rendered italic (`*text*` in markdown). Absent = none. */
+  italic?: Span[]
   /**
    * Per-column cell colors, for image lines only. Indexed by column, aligned
    * with `text` (including any centering pad, which is `null`). Absent on
    * ordinary text lines, which always use the default palette.
    */
   colors?: (CellColor | null)[]
+  /**
+   * Per-column image-tile references, for tile-slice image lines only. Same
+   * per-column/`null`-padded contract as `colors`; a cell with a tile shows a
+   * slice of the real image via CSS instead of a glyph.
+   */
+  tiles?: (ImageTileRef | null)[]
 }
 
 /** A pre-rendered image: quadrant/block character lines plus, when the image is
- *  rendered in color, a parallel grid of per-cell colors (CLAUDE.md rule 6). */
+ *  rendered in color, a parallel grid of per-cell colors (CLAUDE.md rule 6).
+ *  Tile-slice images instead carry a parallel grid of `tiles` (blank `lines`),
+ *  each cell a slice of the real full-resolution image. */
 export interface ImageRender {
   lines: string[]
   colors?: (CellColor | null)[][]
+  tiles?: (ImageTileRef | null)[][]
 }
 
 /** One full screen of content: exactly `rows` lines. */
@@ -77,10 +111,13 @@ export interface PixelSource {
   data: Uint8ClampedArray
 }
 
-/** A run of inline text, optionally a link, for the accessible parallel DOM. */
+/** A run of inline text, optionally a link and/or bold/italic, for the
+ *  accessible parallel DOM. */
 export interface InlineSegment {
   text: string
   href?: string
+  bold?: boolean
+  italic?: boolean
 }
 
 /** A page's real semantic content, rendered as hidden HTML for screen readers

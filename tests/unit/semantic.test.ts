@@ -33,9 +33,16 @@ describe('toSemanticBlocks', () => {
     expect(blocks[1]!.segments).toEqual([{ text: 'see ' }, { text: 'more', href: '/more' }])
   })
 
-  it('strips emphasis and normalizes typography in segments', () => {
-    const [p] = toSemanticBlocks('a **bold** word — done…')
-    expect(p!.segments.map((s) => s.text).join('')).toBe('a bold word - done...')
+  it('tags bold/italic segments and normalizes typography', () => {
+    const [p] = toSemanticBlocks('a **bold** and *italic* word — done…')
+    expect(p!.segments.map((s) => s.text).join('')).toBe('a bold and italic word - done...')
+    expect(p!.segments).toEqual([
+      { text: 'a ' },
+      { text: 'bold', bold: true },
+      { text: ' and ' },
+      { text: 'italic', italic: true },
+      { text: ' word - done...' },
+    ])
   })
 
   it('handles a link that spans the whole block', () => {

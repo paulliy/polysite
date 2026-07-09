@@ -48,21 +48,27 @@ function headingTag(level: number | undefined): string {
   return `h${Math.min(6, Math.max(1, level ?? 2))}`
 }
 
-/** Inline segments as text + working links (RouterLink for internal routes). */
+/** Inline segments as text + working links (RouterLink for internal routes),
+ *  with bold/italic emphasis as real `<strong>`/`<em>` so screen readers
+ *  announce it (the visible board can only fake it with font-weight/style). */
 function Segments(props: { segments: InlineSegment[] }): (VNode | string)[] {
   return props.segments.map((seg, i) => {
-    if (!seg.href) return seg.text
-    if (seg.href.startsWith('/')) return h(RouterLink, { to: seg.href, key: i }, () => seg.text)
-    const external = !seg.href.startsWith('mailto:')
-    return h(
-      'a',
-      {
-        href: seg.href,
-        key: i,
-        ...(external ? { target: '_blank', rel: 'noopener' } : {}),
-      },
-      seg.text,
-    )
+    let node: VNode | string
+    if (!seg.href) {
+      node = seg.text
+    } else if (seg.href.startsWith('/')) {
+      node = h(RouterLink, { to: seg.href, key: i }, () => seg.text)
+    } else {
+      const external = !seg.href.startsWith('mailto:')
+      node = h(
+        'a',
+        { href: seg.href, key: i, ...(external ? { target: '_blank', rel: 'noopener' } : {}) },
+        seg.text,
+      )
+    }
+    if (seg.italic) node = h('em', [node])
+    if (seg.bold) node = h('strong', [node])
+    return node
   })
 }
 </script>

@@ -21,7 +21,7 @@ import { diffGrids } from '@/engine/cellDiff'
 import { rippleDelayMs } from '@/engine/ripple'
 import { timingScaleFor, type DeviceClass } from '@/engine/deviceClass'
 import { scheduleClacks } from '@/audio/clack'
-import type { CellColor, Frame, Line } from '@/engine/types'
+import type { CellColor, Frame, ImageTileRef, Line } from '@/engine/types'
 
 /** One rendered flap cell: its current face plus link/heading treatment. */
 export interface BoardCellState {
@@ -33,11 +33,21 @@ export interface BoardCellState {
    * yet unpainted until hovered (NavBar), while content CTAs stay painted.
    */
   link: boolean
+  /** Rendered with a heavier font-weight (markdown `**bold**`). */
+  bold: boolean
+  /** Rendered with an italic font-style (markdown `*italic*`). */
+  italic: boolean
   /**
    * Per-cell color for image cells (CLAUDE.md rule 6's one exception); null for
    * ordinary cells, which use the default off-white-on-black palette.
    */
   color: CellColor | null
+  /**
+   * Image-tile slice for tile-slice image cells (CLAUDE.md rule 6); null for
+   * ordinary cells. When set, the cell shows a slice of the real image via CSS
+   * background-position/-size instead of a glyph (see engine/imageTile.ts).
+   */
+  tile: ImageTileRef | null
 }
 
 /** An in-progress flip on one cell. */
@@ -86,6 +96,11 @@ function buildFaceSequence(from: string, to: string, rowFraction: number, hopSca
   return sequence
 }
 
+/** Whether column `col` falls inside any span in `spans` (bold/italic ranges). */
+function inSpan(spans: Array<{ start: number; end: number }> | undefined, col: number): boolean {
+  return spans?.some((s) => col >= s.start && col < s.end) ?? false
+}
+
 function lineToCells(line: Line | undefined, cols: number): BoardCellState[] {
   const cells: BoardCellState[] = []
   for (let col = 0; col < cols; col++) {
@@ -96,7 +111,10 @@ function lineToCells(line: Line | undefined, cols: number): BoardCellState[] {
       href: link?.href ?? null,
       heading: line?.kind === 'heading',
       link: link ? (link.paint ?? true) : false,
+      bold: inSpan(line?.bold, col),
+      italic: inSpan(line?.italic, col),
       color: line?.colors?.[col] ?? null,
+      tile: line?.tiles?.[col] ?? null,
     })
   }
   return cells
@@ -104,19 +122,26 @@ function lineToCells(line: Line | undefined, cols: number): BoardCellState[] {
 
 /**
  * A cell's flap identity for diffing: character plus paint. A real split-flap
- * can only change its background (navy link) or weight (heading) by flipping
- * to a different flap, so style changes flip even when the character — often
- * a blank inside a link span — stays the same. Identical face AND paint
- * never animates.
+ * can only change its background (navy link), weight (heading/bold), or slant
+ * (italic) by flipping to a different flap, so style changes flip even when
+ * the character — often a blank inside a link span — stays the same.
+ * Identical face AND paint never animates.
  */
 function cellKeysOf(rows: BoardCellState[][]): string[][] {
   return rows.map((row) =>
     row.map(
       (cell) =>
         `${cell.face} ${cell.link ? 'L' : ''}${cell.heading ? 'H' : ''}` +
+        `${cell.bold ? 'B' : ''}${cell.italic ? 'I' : ''}` +
         // Color is part of a cell's flap identity too: an image cell that keeps
         // its glyph but changes color must still flip to the new color.
-        (cell.color ? ` ${cell.color.fg}|${cell.color.bg}` : ''),
+        (cell.color ? ` ${cell.color.fg}|${cell.color.bg}` : '') +
+        // Likewise the tile slice: tile cells share a blank face, so without
+        // the slice identity a different image (or a different offset within
+        // the same image) would diff as unchanged and never flip.
+        (cell.tile
+          ? ` ${cell.tile.src}#${cell.tile.col}/${cell.tile.row}@${cell.tile.cols}x${cell.tile.rows}`
+          : ''),
     ),
   )
 }
@@ -258,7 +283,10 @@ export const useBoardStore = defineStore('board', () => {
             href: liveCell.href,
             heading: liveCell.heading,
             link: liveCell.link,
+            bold: liveCell.bold,
+            italic: liveCell.italic,
             color: liveCell.color,
+            tile: liveCell.tile,
           }
           nextFlips.set(`${globalRow}:${change.col}`, {
             from: fromCell,
@@ -276,7 +304,10 @@ export const useBoardStore = defineStore('board', () => {
         liveCell.href = targetCell.href
         liveCell.heading = targetCell.heading
         liveCell.link = targetCell.link
+        liveCell.bold = targetCell.bold
+        liveCell.italic = targetCell.italic
         liveCell.color = targetCell.color
+        liveCell.tile = targetCell.tile
       }
     }
 

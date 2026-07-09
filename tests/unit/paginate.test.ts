@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { frameToGrid, paginateMarkdown, parseImageAttrs } from '@/engine/paginate'
 import { FALLBACK_FACE } from '@/engine/characterSet'
-import type { Frame } from '@/engine/types'
+import type { Frame, ImageTileRef } from '@/engine/types'
 
 const OPTS = { cols: 20, rows: 5 }
 
@@ -63,10 +63,115 @@ describe('paginateMarkdown — wrapping', () => {
     ])
   })
 
-  it('strips emphasis markers but keeps their content', () => {
+  it('strips emphasis markers from the text, keeping their content', () => {
     const [frame] = paginateMarkdown('this is **bold** and *em* and `code`', OPTS)
     expect(texts(frame)[0]).toBe('this is bold and em')
     expect(texts(frame)[1]).toBe('and code')
+  })
+})
+
+describe('paginateMarkdown — bold/italic', () => {
+  it('tracks a bold span at the right columns', () => {
+    const [frame] = paginateMarkdown('this is **bold** text', OPTS)
+    expect(frame.lines[0].text).toBe('this is bold text')
+    expect(frame.lines[0].bold).toEqual([{ start: 8, end: 12 }])
+    expect(frame.lines[0].italic).toBeUndefined()
+  })
+
+  it('tracks an italic span at the right columns', () => {
+    const [frame] = paginateMarkdown('this is *italic* text', OPTS)
+    expect(frame.lines[0].text).toBe('this is italic text')
+    expect(frame.lines[0].italic).toEqual([{ start: 8, end: 14 }])
+    expect(frame.lines[0].bold).toBeUndefined()
+  })
+
+  it('tracks bold and italic spans in the same line', () => {
+    const [frame] = paginateMarkdown('**bold** then *italic*', OPTS)
+    expect(frame.lines[0].text).toBe('bold then italic')
+    expect(frame.lines[0].bold).toEqual([{ start: 0, end: 4 }])
+    expect(frame.lines[0].italic).toEqual([{ start: 10, end: 16 }])
+  })
+
+  it('splits a bold span that wraps across lines into per-line spans', () => {
+    const [frame] = paginateMarkdown('aaaa bbbb **bolded words here**', { cols: 16, rows: 5 })
+    expect(texts(frame)).toEqual(['aaaa bbbb bolded', 'words here', '', '', ''])
+    expect(frame.lines[0].bold).toEqual([{ start: 10, end: 16 }])
+    expect(frame.lines[1].bold).toEqual([{ start: 0, end: 10 }])
+  })
+
+  it('shifts a bold span for a centered paragraph', () => {
+    const [frame] = paginateMarkdown('**hi** {align=center}', { cols: 20, rows: 3 })
+    // len 2, pad = floor((20-2)/2) = 9
+    expect(frame.lines[0].text).toBe(' '.repeat(9) + 'hi')
+    expect(frame.lines[0].bold).toEqual([{ start: 9, end: 11 }])
+  })
+
+  it('shifts a bold span inside a list item by the hanging indent', () => {
+    const [frame] = paginateMarkdown('- **first** item', { cols: 20, rows: 3 })
+    expect(frame.lines[0].text).toBe('- first item')
+    expect(frame.lines[0].bold).toEqual([{ start: 2, end: 7 }])
+  })
+
+  it('does not recognize underscore emphasis', () => {
+    const [frame] = paginateMarkdown('a _snake_case_ name', OPTS)
+    expect(frame.lines[0].text).toBe('a _snake_case_ name')
+    expect(frame.lines[0].bold).toBeUndefined()
+    expect(frame.lines[0].italic).toBeUndefined()
+  })
+
+  it('lets the outermost marker win when bold and a link overlap', () => {
+    // Bold's greedy match runs to the last "**", swallowing the link syntax
+    // as literal (unsupported) text rather than recognizing a nested link.
+    const [frame] = paginateMarkdown('**[text](href)**', OPTS)
+    expect(frame.lines[0].text).toBe('[text](href)')
+    expect(frame.lines[0].bold).toEqual([{ start: 0, end: 12 }])
+    expect(frame.lines[0].links).toEqual([])
+  })
+})
+
+describe('paginateMarkdown — text alignment', () => {
+  it('left-aligns by default', () => {
+    const [frame] = paginateMarkdown('hello world', { cols: 20, rows: 3 })
+    expect(frame.lines[0].text).toBe('hello world')
+  })
+
+  it('centers a paragraph with a trailing {align=center} attribute', () => {
+    const [frame] = paginateMarkdown('hi there {align=center}', { cols: 20, rows: 3 })
+    // len 8, pad = floor((20-8)/2) = 6
+    expect(frame.lines[0].text).toBe(' '.repeat(6) + 'hi there')
+  })
+
+  it('right-aligns a paragraph with a trailing {align=right} attribute', () => {
+    const [frame] = paginateMarkdown('hi there {align=right}', { cols: 20, rows: 3 })
+    expect(frame.lines[0].text).toBe(' '.repeat(12) + 'hi there')
+  })
+
+  it('centers a heading with a trailing {align=center} attribute', () => {
+    const [frame] = paginateMarkdown('## Title {align=center}', { cols: 20, rows: 3 })
+    // len 5, pad = floor((20-5)/2) = 7
+    expect(frame.lines[0]).toMatchObject({ text: `${' '.repeat(7)}Title`, kind: 'heading', level: 2 })
+  })
+
+  it('aligns every wrapped line of a multi-line paragraph independently', () => {
+    const [frame] = paginateMarkdown('alpha beta gamma delta epsilon {align=center}', {
+      cols: 17,
+      rows: 3,
+    })
+    // Wraps to 'alpha beta gamma' (16, pad 0) and 'delta epsilon' (13, pad 2) at cols=17.
+    expect(frame.lines[0].text).toBe('alpha beta gamma')
+    expect(frame.lines[1].text).toBe('  delta epsilon')
+  })
+
+  it('shifts link columns when centering', () => {
+    const [frame] = paginateMarkdown('see [me](/me) {align=center}', { cols: 20, rows: 3 })
+    const pad = Math.floor((20 - 'see me'.length) / 2)
+    expect(frame.lines[0].text).toBe(' '.repeat(pad) + 'see me')
+    expect(frame.lines[0].links).toEqual([{ start: pad + 4, end: pad + 6, href: '/me' }])
+  })
+
+  it('does not treat braces in the middle of a line as an attribute', () => {
+    const [frame] = paginateMarkdown('a {align=center} paragraph', { cols: 40, rows: 3 })
+    expect(frame.lines[0].text).toBe('a {align=center} paragraph')
   })
 })
 
@@ -188,6 +293,59 @@ describe('paginateMarkdown — pagination', () => {
     expect(line.colors?.[3]).toEqual({ fg: 'red', bg: 'blue' })
     expect(line.colors?.[0]).toBeNull()
   })
+
+  it('pads the tile track to match alignment', () => {
+    const t: ImageTileRef = { src: '/img.png', col: 0, row: 0, cols: 1, rows: 1 }
+    const image = (src: string) => (src === '/img.png' ? { lines: [' '], tiles: [[t]] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){align=right}', { cols: 4, rows: 2, image })
+    const line = frame.lines[0]!
+    expect(line.tiles?.[3]).toEqual(t)
+    expect(line.tiles?.[0]).toBeNull()
+  })
+
+  it('draws a box-drawing ring around a {border} image, width as total footprint', () => {
+    let requested: { cols?: number; rows?: number } = {}
+    const image = (src: string, maxCols?: number, maxRows?: number) => {
+      requested = { cols: maxCols, rows: maxRows }
+      return src === '/img.png' ? { lines: ['##', '##'] } : null
+    }
+    const [frame] = paginateMarkdown('![alt](/img.png){width=4 border}', {
+      cols: 6,
+      rows: 6,
+      image,
+    })
+    // Image resolves 2 cells smaller than the request on each axis.
+    expect(requested).toEqual({ cols: 2, rows: 4 })
+    // Bordered footprint is 4 cols, centered in 6: pad = 1.
+    expect(texts(frame).slice(0, 4)).toEqual([' ┌──┐', ' │##│', ' │##│', ' └──┘'])
+  })
+
+  it('keeps border cells on the default palette (null color entries)', () => {
+    const image = (src: string) =>
+      src === '/img.png' ? { lines: ['#'], colors: [[{ fg: 'red', bg: 'blue' }]] } : null
+    const [frame] = paginateMarkdown('![alt](/img.png){border align=left}', {
+      cols: 6,
+      rows: 4,
+      image,
+    })
+    expect(texts(frame).slice(0, 3)).toEqual(['┌─┐', '│#│', '└─┘'])
+    expect(frame.lines[1]!.colors?.[0]).toBeNull()
+    expect(frame.lines[1]!.colors?.[1]).toEqual({ fg: 'red', bg: 'blue' })
+    expect(frame.lines[1]!.colors?.[2]).toBeNull()
+  })
+
+  it('keeps border cells free of tiles (null entries around the ring)', () => {
+    const t: ImageTileRef = { src: '/img.png', col: 0, row: 0, cols: 1, rows: 1 }
+    const image = (src: string) => (src === '/img.png' ? { lines: [' '], tiles: [[t]] } : null)
+    const [frame] = paginateMarkdown('![alt](/img.png){border align=left}', {
+      cols: 6,
+      rows: 4,
+      image,
+    })
+    expect(frame.lines[1]!.tiles?.[0]).toBeNull()
+    expect(frame.lines[1]!.tiles?.[1]).toEqual(t)
+    expect(frame.lines[1]!.tiles?.[2]).toBeNull()
+  })
 })
 
 describe('paginateMarkdown — floated images (text wraps around)', () => {
@@ -261,6 +419,34 @@ describe('paginateMarkdown — floated images (text wraps around)', () => {
     expect(frame.lines[2]!.colors).toBeUndefined()
   })
 
+  it('carries image tiles on the float rows only', () => {
+    const tile = (col: number, row: number): ImageTileRef => ({
+      src: '/i.png',
+      col,
+      row,
+      cols: 2,
+      rows: 2,
+    })
+    const image = (src: string) =>
+      src === '/i.png'
+        ? {
+            lines: ['  ', '  '],
+            tiles: [
+              [tile(0, 0), tile(1, 0)],
+              [tile(0, 1), tile(1, 1)],
+            ],
+          }
+        : null
+    const [frame] = paginateMarkdown(`![a](/i.png){width=2 align=left}\n\n${LONG}`, {
+      cols: 20,
+      rows: 12,
+      image,
+    })
+    expect(frame.lines[0]!.tiles?.[0]).toEqual(tile(0, 0))
+    // Rows below the image (index >= 2) carry no tiles.
+    expect(frame.lines[2]!.tiles).toBeUndefined()
+  })
+
   it('falls back to a block image when there is no room to wrap', () => {
     // 6 cols, a 5-col image → only -1 cols left for text: no float.
     const [frame] = paginateMarkdown('![a](/i.png){width=5 align=left}\n\nhello world', {
@@ -272,6 +458,26 @@ describe('paginateMarkdown — floated images (text wraps around)', () => {
     expect(t[0]).toBe('#####') // block image (left-aligned), full line to itself
     // The paragraph is NOT consumed into a float — it appears on its own line.
     expect(t.some((line) => line.startsWith('hello'))).toBe(true)
+  })
+
+  it('floats a bordered image at its total (ring-inclusive) width', () => {
+    let requestedCols: number | undefined
+    const image = (src: string, maxCols?: number) => {
+      requestedCols = maxCols
+      return src === '/i.png' ? { lines: ['###', '###'] } : null
+    }
+    const [frame] = paginateMarkdown(`![a](/i.png){width=5 align=left border}\n\n${LONG}`, {
+      cols: 24,
+      rows: 12,
+      image,
+    })
+    expect(requestedCols).toBe(3) // width=5 minus one border cell per side
+    const t = texts(frame)
+    expect(t[0]!.slice(0, 5)).toBe('┌───┐')
+    // Text starts past the bordered image (5) + gutter (2).
+    expect(t[0]!.slice(5, 7)).toBe('  ')
+    expect(t[0]!.slice(7)).not.toBe('')
+    expect(t[3]!.slice(0, 5)).toBe('└───┘')
   })
 
   it('does not float a centered image', () => {
@@ -303,6 +509,20 @@ describe('parseImageAttrs', () => {
   it('ignores a non-positive width', () => {
     expect(parseImageAttrs('width=0')).toEqual({ align: 'center' })
     expect(parseImageAttrs('width=-5')).toEqual({ align: 'center' })
+  })
+
+  it('parses a bare border flag alongside other attrs', () => {
+    expect(parseImageAttrs('border')).toEqual({ align: 'center', border: true })
+    expect(parseImageAttrs('width=12 border align=left')).toEqual({
+      width: 12,
+      align: 'left',
+      border: true,
+    })
+  })
+
+  it('does not treat "border" inside another token as the flag', () => {
+    expect(parseImageAttrs('align=border')).toEqual({ align: 'center' })
+    expect(parseImageAttrs('borderline')).toEqual({ align: 'center' })
   })
 })
 

@@ -155,12 +155,37 @@ export const DEVICE_TIMING_SCALE = {
 } as const
 
 /**
- * Image pixelation granularity: character cells per image "pixel". Each cell is
- * then sampled as a 2×2 block of sub-pixels rendered with a quadrant block glyph
- * (engine/imageToGrid.ts), so the effective image resolution is 2× the cell grid
- * on each axis — four sub-pixels per flap. Raise this to pixelate more coarsely.
+ * Image pixelation granularity for the (now dormant) quadrant-glyph renderer:
+ * character cells per image "pixel". Content images now render as tile slices
+ * of the real photo (engine/imageTile.ts, content/imageLoader.ts), which has no
+ * sub-sampling knob — so this constant is no longer read by the live pipeline,
+ * kept only alongside the retained-but-unused `pixelsToQuadrantRender` path.
  */
 export const IMAGE_BLOCK_SIZE = 1
+
+/**
+ * Border snake (engine/snake.ts + composables/useSnakeGame.ts): a playful
+ * animation that runs ONLY while a bordered image is hovered. A snake of block
+ * faces travels the image's border ring, eats apples and grows one segment per
+ * apple, then resets to its start length and repeats. It stays true to the flap
+ * philosophy — each cell *flips* (a single flap hop + clack) as the head arrives
+ * and again as the tail leaves, so only the head-front and tail-back cells
+ * change per step (CLAUDE.md #1). The snake lives in a transient overlay
+ * (`board.overrides`) so it never disturbs page content, and is skipped entirely
+ * under prefers-reduced-motion. Code constants, no visitor-facing control
+ * (CLAUDE.md rule 8).
+ */
+/** Milliseconds the snake dwells on each ring cell before advancing one step. */
+export const SNAKE_STEP_MS = 140
+/** Segments the snake starts (and resets back to) each lap. */
+export const SNAKE_START_LENGTH = 3
+/**
+ * The snake grows one segment per apple until it reaches this fraction of the
+ * ring's perimeter, then resets to SNAKE_START_LENGTH and starts a fresh lap.
+ */
+export const SNAKE_MAX_LENGTH_FRACTION = 0.5
+/** Rings shorter than this many cells are too cramped for the snake — skipped. */
+export const SNAKE_MIN_RING_CELLS = 8
 
 /** Mechanical clack per flip. */
 export const SOUND_ENABLED = true

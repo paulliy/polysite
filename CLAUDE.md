@@ -162,9 +162,19 @@ time (`import.meta.glob(..., { eager: true })`) and maps file path → route
 (`home.md` → `/`, `projects/foo.md` → `/projects/foo`); unmatched routes fall back
 to inline 404 markdown. `engine/paginate.ts` parses a small markdown subset
 (headings, paragraphs, `-`/`*` list items, `[text](href)` links, `![alt](src)`
-images; emphasis markers are stripped since a flap board can't render italics/bold)
-into line groups, then slices them into fixed-size `Frame`s — paragraphs split
-across frame boundaries freely (book-style pagination, not a fixed-height card).
+images, `**bold**`/`*italic*` emphasis) into line groups, then slices them into
+fixed-size `Frame`s — paragraphs split across frame boundaries freely
+(book-style pagination, not a fixed-height card). Bold/italic are tracked as
+column spans (`Line.bold`/`Line.italic`, mirroring `Line.links`) through word
+wrap, `{align}` padding, and list/float indent shifts (see `mapSpansToLine`
+and `shiftSpans` in `paginate.ts`), then rendered as a font-weight/font-style
+change per cell (`BoardCell.vue`'s `.face--bold`/`.face--italic`, part of a
+cell's flap identity in `cellKeysOf` alongside link/heading) — not a real
+mechanical capability, but the flattest way to fake it without breaking rule 6's
+palette. Underscore emphasis isn't recognized and emphasis can't nest inside a
+link (or vice versa); see the `paginate.ts` module docstring for the exact
+rules. (Owner added bold/italic 2026-07-08; the brief and this file's older
+text both said emphasis markers were stripped — that's no longer true.)
 The same module also exports `toSemanticBlocks()`, an unpaginated, layout-free
 parse of the whole document used only by `HiddenContent.vue` (the visually-hidden,
 `aria-hidden`-free parallel DOM that gives screen readers/Ctrl+F real headings,
@@ -181,12 +191,20 @@ channel (part of a cell's diff identity), and `BoardCell.vue` paints them inline
 the one place the board departs from the off-white-on-black palette (see rule 6).
 The older two-tone `pixelsToGrid`/`gridToCharLines` path is retained (still
 unit-tested) but no longer wired into the loader. An image may carry an optional
-trailing `{width=N align=left|center|right}` attribute (`paginate.ts`'s
+trailing `{width=N align=left|center|right border}` attribute (`paginate.ts`'s
 `parseImageAttrs`/`IMAGE_MARKDOWN_RE`, shared with `imageLoader.ts` so preloading
 requests the same size the paginator will resolve at) — `width` narrows the
 render to N cells (capped at content width) instead of filling it, and `align`
 picks which side the leftover columns pad; both default to full-width/`center`
-(the pre-existing behavior) when omitted. A **sized left/right image floats**:
+(the pre-existing behavior) when omitted. The bare `border` flag
+(`engine/border.ts`'s `withBorder`) wraps the image in a one-cell ring of
+box-drawing faces (`┌─┐│└┘` — real board faces in `characterSet.ts`'s
+`BORDER_GLYPHS`, no spin category, default palette per rule 6); `width` stays
+the total footprint, so the image itself resolves 2 cells narrower/shorter
+(`imageRequestSize`, shared with the preloader so cache keys match).
+`border.ts` is deliberately its own module — it's the intended home for future
+border treatments (e.g. an animated segment travelling the ring). A **sized
+left/right image floats**:
 the paragraph(s) immediately after it wrap into the columns beside it (variable-
 width word wrap via `wrapFlatTextVariable` — narrow next to the image, full width
 once past its bottom), composed into combined image+text lines by `composeFloat`.

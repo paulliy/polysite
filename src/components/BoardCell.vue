@@ -15,6 +15,7 @@ import {
 } from '@/config'
 import { isIcon, randomLoadingFace } from '@/engine/characterSet'
 import { iconSvg } from '@/engine/icons'
+import { tileBackgroundStyle } from '@/engine/imageTile'
 import { rippleDelayMs } from '@/engine/ripple'
 import IconGlyph from './IconGlyph.vue'
 
@@ -72,13 +73,22 @@ function stop() {
 }
 
 function faceClasses(cell: BoardCellState) {
-  return { 'face--link': cell.link, 'face--heading': cell.heading }
+  return {
+    'face--link': cell.link,
+    'face--heading': cell.heading,
+    'face--bold': cell.bold,
+    'face--italic': cell.italic,
+  }
 }
 
-/** Inline color for an image cell (CLAUDE.md rule 6's one exception), or
- *  undefined so the cell keeps the default off-white-on-black palette. */
+/** Inline style for an image cell (CLAUDE.md rule 6's one exception): a color
+ *  pair for quadrant cells, or a CSS background-image slice for tile cells, or
+ *  undefined so an ordinary cell keeps the default off-white-on-black palette.
+ *  Color and tile are independent channels, merged if both are ever set. */
 function faceStyle(cell: BoardCellState) {
-  return cell.color ? { color: cell.color.fg, background: cell.color.bg } : undefined
+  const color = cell.color ? { color: cell.color.fg, background: cell.color.bg } : null
+  const tile = cell.tile ? tileBackgroundStyle(cell.tile) : null
+  return color || tile ? { ...color, ...tile } : undefined
 }
 
 /** Paint a flip face's color imperatively (mirrors faceStyle for the WAAPI hops,
@@ -88,11 +98,28 @@ function applyColor(el: HTMLElement, color: BoardCellState['color']) {
   el.style.background = color ? color.bg : ''
 }
 
+/** Paint a flip face's image-tile slice imperatively (the tile counterpart to
+ *  applyColor), or clear it so an intermediate/non-image face is plain. */
+function applyTile(el: HTMLElement, tile: BoardCellState['tile']) {
+  if (tile) {
+    const style = tileBackgroundStyle(tile)
+    el.style.backgroundImage = style.backgroundImage
+    el.style.backgroundSize = style.backgroundSize
+    el.style.backgroundPosition = style.backgroundPosition
+  } else {
+    el.style.backgroundImage = ''
+    el.style.backgroundSize = ''
+    el.style.backgroundPosition = ''
+  }
+}
+
 /** Only the real endpoint faces carry paint; intermediate flaps are plain. */
 function faceClassName(base: string, cell: BoardCellState, painted: boolean): string {
   let className = base
   if (painted && cell.link) className += ' face--link'
   if (painted && cell.heading) className += ' face--heading'
+  if (painted && cell.bold) className += ' face--bold'
+  if (painted && cell.italic) className += ' face--italic'
   return className
 }
 
@@ -202,6 +229,7 @@ function settle() {
       setFaceContent(back, props.cell.face)
       back.className = faceClassName('face face--back', props.cell, true)
       applyColor(back, props.cell.color)
+      applyTile(back, props.cell.tile)
       animation?.cancel()
       animation = rotate(FLIP_HOP_MS)
       if (!animation) {
@@ -238,12 +266,14 @@ function startFlip(g: number) {
       if (g !== gen) return
       setFaceContent(front, faces[step] ?? props.cell.face)
       front.className = faceClassName('face face--front', f.from, step === 0)
-      // Only the real endpoints carry color; intermediate flaps are plain.
+      // Only the real endpoints carry color/tile; intermediate flaps are plain.
       applyColor(front, step === 0 ? f.from.color : null)
+      applyTile(front, step === 0 ? f.from.tile : null)
       animation?.cancel()
       setFaceContent(back, faces[step + 1] ?? props.cell.face)
       back.className = faceClassName('face face--back', props.cell, step === lastHop)
       applyColor(back, step === lastHop ? props.cell.color : null)
+      applyTile(back, step === lastHop ? props.cell.tile : null)
       animation = rotate(FLIP_HOP_MS)
       if (!animation) return
       animation.onfinish = () => {
@@ -377,10 +407,21 @@ function follow() {
   font-size: var(--cell-font-size);
   line-height: 1;
   color: var(--color-char);
+  /* Tile-slice image cells set background-image/-size/-position inline; this
+     keeps a slice from tiling. Inert for ordinary cells (no background-image). */
+  background-repeat: no-repeat;
 }
 
 .face--heading {
   font-weight: var(--font-weight-heading);
+}
+
+.face--bold {
+  font-weight: var(--font-weight-bold);
+}
+
+.face--italic {
+  font-style: italic;
 }
 
 .face--link {

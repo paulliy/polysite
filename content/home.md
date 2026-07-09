@@ -1,6 +1,6 @@
-# Paul Li
+# *Paul Li* {align=center}
 
-![A photo of the project](/images/outercloudavatar.png){width=20 al1ign=left}
+![A photo of me](/images/profile.jpg){width=25 align=left border}
 
 Software, products, and the occasional mechanical interface. This whole
 site is one split-flap board: scroll to page through content, or use the
